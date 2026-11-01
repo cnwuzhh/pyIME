@@ -55,4 +55,5 @@ try {
 } finally {
     Pop-Location
 }
+Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination (Join-Path $weasel 'output\README.txt') -Force
 Write-Host 'pyIME simplified input, Shift switching and candidate style profile applied.'

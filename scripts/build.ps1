@@ -7,6 +7,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $weasel = Join-Path $root 'vendor\weasel'
+$brand = Get-Content -LiteralPath (Join-Path $root 'config\branding.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 $gitBin = Join-Path $env:ProgramFiles 'Git\bin'
 $pythonBin = Join-Path $root '.tools\python\Scripts'
@@ -61,11 +62,15 @@ if ($SkipDependencies) {
 $logs = Join-Path $root '.build'
 New-Item -ItemType Directory -Path $logs -Force | Out-Null
 $log = Join-Path $logs ("build-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
-$originals = foreach ($path in @(
+$sourceFiles = @(
     (Join-Path $weasel 'librime\lib\.placeholder'),
     (Join-Path $weasel 'librime\deps\opencc\CMakeLists.txt'),
     (Join-Path $weasel 'output\data\weasel.yaml')
-)) {
+)
+foreach ($relative in (& (Join-Path $PSScriptRoot 'apply-branding.ps1') -ListFiles)) {
+    $sourceFiles += Join-Path $weasel $relative
+}
+$originals = foreach ($path in $sourceFiles) {
     @{
         Path = $path
         Bytes = [System.IO.File]::ReadAllBytes($path)
@@ -82,6 +87,7 @@ $commands += 'cd /d "{0}" && call build.bat weasel installer' -f $weasel
 $command = '({0}) 2>&1' -f ($commands -join ' && ')
 $started = Get-Date
 try {
+    & (Join-Path $PSScriptRoot 'apply-branding.ps1')
     & $env:ComSpec /d /c $command | Tee-Object -FilePath $log
     $exitCode = $LASTEXITCODE
     $content = [System.IO.File]::ReadAllText($log)
@@ -89,7 +95,7 @@ try {
     if ($exitCode -ne 0) {
         throw "Weasel build failed with exit code $exitCode. See $log."
     }
-    $installer = Get-Item -LiteralPath (Join-Path $weasel 'output\archives\weasel-0.17.4.0-installer.exe')
+    $installer = Get-Item -LiteralPath (Join-Path $weasel ('output\archives\' + $brand.installerFile))
     if ($installer.Length -eq 0 -or $installer.LastWriteTime -lt $started) {
         throw 'The build did not generate a new, non-empty installer.'
     }

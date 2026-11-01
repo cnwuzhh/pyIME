@@ -1,9 +1,13 @@
 param(
-    [string]$Installer = (Join-Path $PSScriptRoot '..\output\weasel-0.17.4.0-installer.exe')
+    [string]$Installer
 )
 
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+if (-not $Installer) {
+    $brand = Get-Content -LiteralPath (Join-Path $root 'config\branding.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    $Installer = Join-Path $root ('output\' + $brand.installerFile)
+}
 $weasel = Join-Path $root 'vendor\weasel'
 $work = Join-Path $root ('.build\profile-test-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 New-Item -ItemType Directory -Path $work | Out-Null
@@ -12,6 +16,7 @@ $package = Join-Path $work 'package'
 if ($LASTEXITCODE -ne 0) {
     throw "Installer extraction failed with exit code $LASTEXITCODE."
 }
+& (Join-Path $PSScriptRoot 'test-branding.ps1') -Installer $Installer -PackageDirectory $package
 
 $dlls = Get-ChildItem -LiteralPath $package -Filter 'rime*.dll' | Where-Object {
     $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
