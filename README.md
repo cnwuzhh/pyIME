@@ -53,7 +53,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1
 
 Boost 使用 [`scripts/boost-config.jam`](./scripts/boost-config.jam) 中的官方配置：由构建入口明确传入已验证的 `vcvarsall.bat` 路径，并设置 `rewrite-setup-scripts=off`。这避免 Boost 1.84 的自动路径识别和环境缓存失败导致架构错误或编译目标被跳过。
 
-原始构建日志输出到 `.build\build-*.log`，安装包输出到 `vendor\weasel\output\archives`。工具缓存和编译产物不提交到 Git。此阶段构建的是上游 Weasel 安装包，尚未改为 pyIME 品牌或集成雾凇拼音；输入法安装与配置部署另行执行。安装后，可通过开始菜单中的小狼毫工具打开用户文件夹。更多上游细节见 [Weasel 构建说明](https://github.com/rime/weasel/blob/master/INSTALL.md)。
+原始构建日志输出到 `.build\build-*.log`，安装包统一放在仓库根目录的 [`output/`](./output/) 中。上游仍在 `vendor\weasel\output\archives` 中生成安装包，构建入口随后复制到根目录 `output`，核对 SHA-256，并显示最终路径。安装包沿用上游文件名，同名文件会被最新成功构建覆盖。工具缓存和安装包二进制不提交到 Git，`output` 中的说明文件保留在版本控制中。此阶段构建的是上游 Weasel 安装包，尚未改为 pyIME 品牌或集成雾凇拼音；输入法安装与配置部署另行执行。安装后，可通过开始菜单中的小狼毫工具打开用户文件夹。更多上游细节见 [Weasel 构建说明](https://github.com/rime/weasel/blob/master/INSTALL.md)。
 
 上游脚本会临时改写 OpenCC 的 CMake 文件并删除 librime 的占位文件；构建入口在运行前保存其原始字节，结束时恢复，避免源码变脏。Weasel 子模块设置 `ignore = untracked`，只忽略未跟踪的构建输出，已跟踪源码改动和子模块版本变化仍会显示。
 

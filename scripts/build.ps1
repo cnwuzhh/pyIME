@@ -89,7 +89,16 @@ try {
     if ($installer.Length -eq 0 -or $installer.LastWriteTime -lt $started) {
         throw 'The build did not generate a new, non-empty installer.'
     }
-    Write-Host "Installer: $($installer.FullName)"
+    $output = Join-Path $root 'output'
+    New-Item -ItemType Directory -Path $output -Force | Out-Null
+    $destination = Join-Path $output $installer.Name
+    Copy-Item -LiteralPath $installer.FullName -Destination $destination -Force
+    $sourceHash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash
+    $outputHash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
+    if ($sourceHash -ne $outputHash) {
+        throw "Installer copy verification failed: $destination"
+    }
+    Write-Host "Installer: $destination"
 } finally {
     # The upstream build deletes its lib placeholder and rewrites OpenCC's CMake file.
     foreach ($original in $originals) {

@@ -1,2 +1,4 @@
 .tools/
 .build/
+/output/*
+!/output/README.md
