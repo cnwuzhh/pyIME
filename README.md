@@ -59,6 +59,8 @@ Boost 使用 [`scripts/boost-config.jam`](./scripts/boost-config.jam) 中的官�
 
 ## 使用雾凇拼音配置
 
+本次源码构建的 librime 尚未集成 `librime-lua`；雾凇拼音方案依赖 Lua 处理器、翻译器和过滤器，因此不能直接将配置部署到本次安装包并认为已经支持雾凇拼音。当前运行验证使用上游朙月拼音（`luna_pinyin`）；后续须集成 Lua 插件，再验证雾凇拼音部署和输入。
+
 雾凇拼音配置位于 `config\rime-ice`。首次替换 Rime 用户配置前，先从小狼毫工具打开用户文件夹并备份现有 `%APPDATA%\Rime` 内容；然后按[雾凇拼音说明](https://github.com/iDvel/rime-ice#安装)部署配置，并在小狼毫中执行“重新部署”。不要直接删除未备份的用户配置或词库。
 
 ## 许可证
