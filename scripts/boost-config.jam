@@ -1,2 +1,3 @@
-# Use MSVC's original setup scripts instead of Boost 1.84's environment cache.
-using msvc : 14.3 : : <rewrite-setup-scripts>off ;
+import os ;
+local vcvarsall = [ os.environ PYIME_VCVARSALL ] ;
+using msvc : 14.3 : : <setup>$(vcvarsall) <rewrite-setup-scripts>off ;

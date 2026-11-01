@@ -42,30 +42,59 @@ $env:SDKVER = '10.0.19041.0'
 $env:RELEASE_BUILD = '1'
 $env:DEVTOOLS_PATH = "$gitBin;$CMakeBin;$pythonBin;"
 $env:PATH = "$gitBin;$CMakeBin;$pythonBin;$env:PATH"
+$env:PYIME_VCVARSALL = $vcvars -replace '\\', '/'
 $env:BOOST_COMPILED_LIBS = '--project-config="{0}"' -f (Join-Path $PSScriptRoot 'boost-config.jam')
+if (-not $env:CMAKE_BUILD_PARALLEL_LEVEL) {
+    $env:CMAKE_BUILD_PARALLEL_LEVEL = $env:NUMBER_OF_PROCESSORS
+}
 
 $localEnv = Join-Path $weasel 'env.bat'
 if (-not (Test-Path -LiteralPath $localEnv)) {
     Copy-Item -LiteralPath (Join-Path $weasel 'env.vs2022.bat') -Destination $localEnv
 }
 
-$targets = 'boost rime data opencc weasel installer'
+$phases = @('boost', 'rime', 'data opencc', 'weasel installer')
 if ($SkipDependencies) {
-    $targets = 'weasel installer'
+    $phases = @('data opencc', 'weasel installer')
 }
 
 $logs = Join-Path $root '.build'
 New-Item -ItemType Directory -Path $logs -Force | Out-Null
 $log = Join-Path $logs ("build-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+$originals = foreach ($path in @(
+    (Join-Path $weasel 'librime\lib\.placeholder'),
+    (Join-Path $weasel 'librime\deps\opencc\CMakeLists.txt')
+)) {
+    @{
+        Path = $path
+        Bytes = [System.IO.File]::ReadAllBytes($path)
+    }
+}
 Write-Host "Build log: $log"
-$command = '(call "{0}" x86_amd64 {1} && cd /d "{2}" && call build.bat {3}) 2>&1' -f `
-    $vcvars, $env:SDKVER, $weasel, $targets
-& $env:ComSpec /d /c $command | Tee-Object -FilePath $log
-if ($LASTEXITCODE -ne 0) {
-    throw "Weasel build failed with exit code $LASTEXITCODE. See $log."
+$commands = @('call "{0}" x86_amd64 {1}' -f $vcvars, $env:SDKVER)
+foreach ($phase in $phases) {
+    $commands += 'cd /d "{0}" && call build.bat {1}' -f $weasel, $phase
 }
-$installer = Get-Item -LiteralPath (Join-Path $weasel 'output\archives\weasel-0.17.4.0-installer.exe')
-if ($installer.Length -eq 0) {
-    throw 'The generated installer is empty.'
+$command = '({0}) 2>&1' -f ($commands -join ' && ')
+$started = Get-Date
+try {
+    & $env:ComSpec /d /c $command | Tee-Object -FilePath $log
+    $exitCode = $LASTEXITCODE
+    $content = [System.IO.File]::ReadAllText($log)
+    [System.IO.File]::WriteAllText($log, $content, (New-Object System.Text.UTF8Encoding($false)))
+    if ($exitCode -ne 0) {
+        throw "Weasel build failed with exit code $exitCode. See $log."
+    }
+    $installer = Get-Item -LiteralPath (Join-Path $weasel 'output\archives\weasel-0.17.4.0-installer.exe')
+    if ($installer.Length -eq 0 -or $installer.LastWriteTime -lt $started) {
+        throw 'The build did not generate a new, non-empty installer.'
+    }
+    Write-Host "Installer: $($installer.FullName)"
+} finally {
+    # The upstream build deletes its lib placeholder and rewrites OpenCC's CMake file.
+    foreach ($original in $originals) {
+        $directory = Split-Path -Parent $original.Path
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+        [System.IO.File]::WriteAllBytes($original.Path, $original.Bytes)
+    }
 }
-Write-Host "Installer: $($installer.FullName)"

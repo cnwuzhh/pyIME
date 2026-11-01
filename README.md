@@ -49,11 +49,13 @@ winget install --id NSIS.NSIS --exact --source winget --accept-package-agreement
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1
 ```
 
-这里的执行策略仅用于这次脚本进程，不改变系统执行策略。脚本在同一 `cmd.exe` 进程中配置 MSVC 并调用上游构建脚本，以免丢失编译器环境。首次构建包括 Boost 和 librime 源码编译、默认数据准备、Weasel 编译和安装包生成；上游完整流程会重新生成 librime 的本地构建缓存。只修改 Weasel 后可追加 `-SkipDependencies` 复用已经生成的依赖；自定义 Boost/CMake 位置可通过 `-BoostRoot` 和 `-CMakeBin` 指定。
+这里的执行策略仅用于这次脚本进程，不改变系统执行策略。脚本在同一 `cmd.exe` 进程中配置 MSVC，并从 Weasel 根目录分别调用上游各个构建阶段，以免丢失编译器环境或沿用 librime 构建留下的工作目录。首次构建包括 Boost 和 librime 源码编译、默认数据准备、Weasel 编译和安装包生成；上游完整流程会重新生成 librime 的本地构建缓存。只修改 Weasel 后可追加 `-SkipDependencies` 复用已经生成的 Boost/librime，仍准备数据并生成新安装包；自定义 Boost/CMake 位置可通过 `-BoostRoot` 和 `-CMakeBin` 指定。
 
-Boost 使用 [`scripts/boost-config.jam`](./scripts/boost-config.jam) 中的官方 `rewrite-setup-scripts=off` 配置，直接调用 MSVC 环境脚本，避免 Boost 1.84 的环境缓存生成失败导致所有编译目标被跳过。
+Boost 使用 [`scripts/boost-config.jam`](./scripts/boost-config.jam) 中的官方配置：由构建入口明确传入已验证的 `vcvarsall.bat` 路径，并设置 `rewrite-setup-scripts=off`。这避免 Boost 1.84 的自动路径识别和环境缓存失败导致架构错误或编译目标被跳过。
 
 原始构建日志输出到 `.build\build-*.log`，安装包输出到 `vendor\weasel\output\archives`。工具缓存和编译产物不提交到 Git。此阶段构建的是上游 Weasel 安装包，尚未改为 pyIME 品牌或集成雾凇拼音；输入法安装与配置部署另行执行。安装后，可通过开始菜单中的小狼毫工具打开用户文件夹。更多上游细节见 [Weasel 构建说明](https://github.com/rime/weasel/blob/master/INSTALL.md)。
+
+上游脚本会临时改写 OpenCC 的 CMake 文件并删除 librime 的占位文件；构建入口在运行前保存其原始字节，结束时恢复，避免源码变脏。Weasel 子模块设置 `ignore = untracked`，只忽略未跟踪的构建输出，已跟踪源码改动和子模块版本变化仍会显示。
 
 ## 使用雾凇拼音配置
 
