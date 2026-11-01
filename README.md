@@ -24,16 +24,36 @@ git submodule update --init --recursive
 
 ## 构建 Weasel
 
-请先按 [Weasel 构建说明](https://github.com/rime/weasel/blob/master/INSTALL.md)安装 Windows C++ 桌面构建环境、CMake、clang-format 和 Boost，并配置 `BOOST_ROOT`。首次构建前，先初始化所有上游子模块。
+当前构建入口为 [`scripts/build.ps1`](./scripts/build.ps1)，使用 Visual Studio 2022 的 v143 工具链，构建 x64 与 Win32，不构建 ARM。脚本不安装输入法，也不修改系统输入设置。
+
+首次构建前，初始化所有子模块并准备以下工具：
+
+- Visual Studio Build Tools 2022：C++ 桌面构建工具、ATL/MFC、Windows 10 SDK `10.0.19041.0`。
+- CMake `3.31.8`：解压到 `.tools\cmake-3.31.8-windows-x86_64`，避免旧依赖遇到 CMake 4 的兼容性变化。
+- Boost `1.84.0`：解压到 `.tools\boost_1_84_0`，首次构建会编译静态库。
+- Git for Windows（含 Git Bash）和 NSIS，安装在默认位置。
+- Python 3 与 clang-format `18.1.8`：本地隔离环境位于 `.tools\python`，格式工具不是编译步骤的前置要求。
+
+系统工具的安装命令如下；Visual Studio 和 NSIS 安装可能需要管理员授权：
 
 ```powershell
-cd vendor\weasel
-Copy-Item env.bat.template env.bat
-# 编辑 env.bat，设置 BOOST_ROOT 为本机 Boost 目录
-.\build.bat all
+winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --source winget --accept-package-agreements --accept-source-agreements --override "--wait --passive --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --add Microsoft.VisualStudio.Component.VC.ATL --add Microsoft.VisualStudio.Component.VC.ATLMFC --add Microsoft.VisualStudio.Component.Windows10SDK.19041"
+winget install --id NSIS.NSIS --exact --source winget --accept-package-agreements --accept-source-agreements
 ```
 
-安装包由上游构建流程输出到 `vendor\weasel\output\archives`。安装输入法后，可通过开始菜单中的小狼毫工具打开用户文件夹。
+从 [CMake 官方发布](https://github.com/Kitware/CMake/releases/tag/v3.31.8)和 [Boost 官方归档](https://archives.boost.io/release/1.84.0/source/)下载对应压缩包，核对发布方提供的 SHA-256 后解压到上述目录。可用 `python -m venv .tools\python` 创建 Python 环境，再执行 `.tools\python\Scripts\python.exe -m pip install clang-format==18.1.8` 安装格式工具。
+
+在 pyIME 根目录运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1
+```
+
+这里的执行策略仅用于这次脚本进程，不改变系统执行策略。脚本在同一 `cmd.exe` 进程中配置 MSVC 并调用上游构建脚本，以免丢失编译器环境。首次构建包括 Boost 和 librime 源码编译、默认数据准备、Weasel 编译和安装包生成；上游完整流程会重新生成 librime 的本地构建缓存。只修改 Weasel 后可追加 `-SkipDependencies` 复用已经生成的依赖；自定义 Boost/CMake 位置可通过 `-BoostRoot` 和 `-CMakeBin` 指定。
+
+Boost 使用 [`scripts/boost-config.jam`](./scripts/boost-config.jam) 中的官方 `rewrite-setup-scripts=off` 配置，直接调用 MSVC 环境脚本，避免 Boost 1.84 的环境缓存生成失败导致所有编译目标被跳过。
+
+原始构建日志输出到 `.build\build-*.log`，安装包输出到 `vendor\weasel\output\archives`。工具缓存和编译产物不提交到 Git。此阶段构建的是上游 Weasel 安装包，尚未改为 pyIME 品牌或集成雾凇拼音；输入法安装与配置部署另行执行。安装后，可通过开始菜单中的小狼毫工具打开用户文件夹。更多上游细节见 [Weasel 构建说明](https://github.com/rime/weasel/blob/master/INSTALL.md)。
 
 ## 使用雾凇拼音配置
 
