@@ -1,0 +1,6 @@
+[submodule "vendor/weasel"]
+	path = vendor/weasel
+	url = https://github.com/rime/weasel.git
+[submodule "config/rime-ice"]
+	path = config/rime-ice
+	url = https://github.com/iDvel/rime-ice.git
