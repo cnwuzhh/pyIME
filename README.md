@@ -10,7 +10,17 @@
 - [`vendor/weasel/librime`](https://github.com/rime/librime)：Rime 输入法引擎，作为 Weasel 的上游子模块固定版本。
 - [`config/rime-ice`](https://github.com/iDvel/rime-ice)：雾凇拼音方案与词库，作为独立子模块固定版本。
 
-Weasel 和雾凇拼音保留各自的上游代码与许可证。当前仓库只是可复现的上游基线，尚未包含 pyIME 自有的 TSF 代码或搜狗兼容功能。
+Weasel 和雾凇拼音保留各自的上游代码与许可证。当前使用上游 TSF 实现，已加入 pyIME 的简体中文、Shift 切换和候选窗配置，不是搜狗输入法的完整复刻。
+
+## 当前输入体验
+
+- 默认使用朙月拼音·简化字（`luna_pinyin_simp`），默认中文输入，例如 `zhongguo` 输出“中国”。
+- 轻按左或右 Shift 切换中英文；正在输入拼音时，先把原始拼音字母上屏，再切换到英文。例如输入 `nihao` 后按 Shift，上屏 `nihao`，而不是“你好”。
+- Shift 与字母组合使用不触发中英文切换；长按 Shift 不作为轻按切换处理。
+- 候选窗采用已确认的经典桌面样式：白底、横向每页 5 个候选、蓝色选中、白色选中文字、圆角、上方显示拼音。使用自有配置，不复制搜狗商标或皮肤资源，不宣称像素级一致。
+- 用户已有的 `default.custom.yaml`、`weasel.custom.yaml` 仍在默认配置之后应用，不覆盖个人设置。升级后如保留旧方案或旧主题，请通过小狼毫设置选择简化字方案和 `pyIME Light` 主题，并执行“重新部署”；旧的用户自定义按键和布局优先级仍更高。
+
+配置保存在 [`config/pyime/`](./config/pyime/)，随安装包分发。构建时使用 librime 的 YAML 配置接口将默认值合入数据文件，让首次安装设置向导和运行时保持一致，同时保留用户补丁入口。
 
 ## 获取源码
 
@@ -53,13 +63,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1
 
 Boost 使用 [`scripts/boost-config.jam`](./scripts/boost-config.jam) 中的官方配置：由构建入口明确传入已验证的 `vcvarsall.bat` 路径，并设置 `rewrite-setup-scripts=off`。这避免 Boost 1.84 的自动路径识别和环境缓存失败导致架构错误或编译目标被跳过。
 
-原始构建日志输出到 `.build\build-*.log`，安装包统一放在仓库根目录的 [`output/`](./output/) 中。上游仍在 `vendor\weasel\output\archives` 中生成安装包，构建入口随后复制到根目录 `output`，核对 SHA-256，并显示最终路径。安装包沿用上游文件名，同名文件会被最新成功构建覆盖。工具缓存和安装包二进制不提交到 Git，`output` 中的说明文件保留在版本控制中。此阶段构建的是上游 Weasel 安装包，尚未改为 pyIME 品牌或集成雾凇拼音；输入法安装与配置部署另行执行。安装后，可通过开始菜单中的小狼毫工具打开用户文件夹。更多上游细节见 [Weasel 构建说明](https://github.com/rime/weasel/blob/master/INSTALL.md)。
+原始构建日志输出到 `.build\build-*.log`，安装包统一放在仓库根目录的 [`output/`](./output/) 中。上游仍在 `vendor\weasel\output\archives` 中生成安装包，构建入口随后复制到根目录 `output`，核对 SHA-256，并显示最终路径。安装包沿用上游文件名，同名文件会被最新成功构建覆盖。工具缓存和安装包二进制不提交到 Git，`output` 中的说明文件保留在版本控制中。此阶段仍使用 Weasel 品牌，已加入上述 pyIME 默认输入配置，尚未集成雾凇拼音；输入法安装与配置部署另行执行。安装后，可通过开始菜单中的小狼毫工具打开用户文件夹。更多上游细节见 [Weasel 构建说明](https://github.com/rime/weasel/blob/master/INSTALL.md)。
 
 上游脚本会临时改写 OpenCC 的 CMake 文件并删除 librime 的占位文件；构建入口在运行前保存其原始字节，结束时恢复，避免源码变脏。Weasel 子模块设置 `ignore = untracked`，只忽略未跟踪的构建输出，已跟踪源码改动和子模块版本变化仍会显示。
 
+## 验证输入配置与候选窗
+
+完成构建后运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-profile.ps1
+```
+
+测试从根目录 `output` 的安装包解压实际配置和 Rime DLL，在独立测试目录验证首次安装默认值、简体候选与上屏、左右 Shift 切换、拼音字母上屏和 Shift+字母不误切换。另用空用户补丁和已有字体补丁分别验证部署行为，不读写真实用户词库或系统输入设置。
+
+测试会短暂显示原生候选窗，用实际编译的 Weasel UI 检查横向布局、白底与蓝色选中，生成 [`output/candidate-preview.png`](./output/candidate-preview.png)。需要可用的 Windows 桌面；这不是网页模拟，也不替代安装后的真实应用 TSF 兼容性测试。测试成功后清理其解压目录，图片和安装包留在 `output`，不提交 Git。
+
 ## 使用雾凇拼音配置
 
-本次源码构建的 librime 尚未集成 `librime-lua`；雾凇拼音方案依赖 Lua 处理器、翻译器和过滤器，因此不能直接将配置部署到本次安装包并认为已经支持雾凇拼音。当前运行验证使用上游朙月拼音（`luna_pinyin`）；后续须集成 Lua 插件，再验证雾凇拼音部署和输入。
+本次源码构建的 librime 尚未集成 `librime-lua`；雾凇拼音方案依赖 Lua 处理器、翻译器和过滤器，因此不能直接将配置部署到本次安装包并认为已经支持雾凇拼音。当前运行验证使用上游朙月拼音·简化字（`luna_pinyin_simp`）；后续须集成 Lua 插件，再验证雾凇拼音部署和输入。
 
 雾凇拼音配置位于 `config\rime-ice`。首次替换 Rime 用户配置前，先从小狼毫工具打开用户文件夹并备份现有 `%APPDATA%\Rime` 内容；然后按[雾凇拼音说明](https://github.com/iDvel/rime-ice#安装)部署配置，并在小狼毫中执行“重新部署”。不要直接删除未备份的用户配置或词库。
 

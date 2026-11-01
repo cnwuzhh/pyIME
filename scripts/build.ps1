@@ -53,9 +53,9 @@ if (-not (Test-Path -LiteralPath $localEnv)) {
     Copy-Item -LiteralPath (Join-Path $weasel 'env.vs2022.bat') -Destination $localEnv
 }
 
-$phases = @('boost', 'rime', 'data opencc', 'weasel installer')
+$phases = @('boost', 'rime', 'data opencc')
 if ($SkipDependencies) {
-    $phases = @('data opencc', 'weasel installer')
+    $phases = @('data opencc')
 }
 
 $logs = Join-Path $root '.build'
@@ -63,7 +63,8 @@ New-Item -ItemType Directory -Path $logs -Force | Out-Null
 $log = Join-Path $logs ("build-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 $originals = foreach ($path in @(
     (Join-Path $weasel 'librime\lib\.placeholder'),
-    (Join-Path $weasel 'librime\deps\opencc\CMakeLists.txt')
+    (Join-Path $weasel 'librime\deps\opencc\CMakeLists.txt'),
+    (Join-Path $weasel 'output\data\weasel.yaml')
 )) {
     @{
         Path = $path
@@ -75,6 +76,9 @@ $commands = @('call "{0}" x86_amd64 {1}' -f $vcvars, $env:SDKVER)
 foreach ($phase in $phases) {
     $commands += 'cd /d "{0}" && call build.bat {1}' -f $weasel, $phase
 }
+$commands += 'powershell -NoProfile -ExecutionPolicy Bypass -File "{0}" -DataDirectory "{1}"' -f `
+    (Join-Path $PSScriptRoot 'apply-profile.ps1'), (Join-Path $weasel 'output\data')
+$commands += 'cd /d "{0}" && call build.bat weasel installer' -f $weasel
 $command = '({0}) 2>&1' -f ($commands -join ' && ')
 $started = Get-Date
 try {
@@ -100,7 +104,7 @@ try {
     }
     Write-Host "Installer: $destination"
 } finally {
-    # The upstream build deletes its lib placeholder and rewrites OpenCC's CMake file.
+    # Restore tracked upstream files changed during compilation and profile packaging.
     foreach ($original in $originals) {
         $directory = Split-Path -Parent $original.Path
         New-Item -ItemType Directory -Path $directory -Force | Out-Null
