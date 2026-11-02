@@ -26,7 +26,7 @@ patch:
   style/layout/corner_radius: 8
   style/layout/shadow_radius: 0
   preset_color_schemes/pyime_light:
-    name: Xinghe Light
+    name: Stellar River Light
     author: pyIME
     color_format: argb
     back_color: 0xFFFFFFFF

@@ -4,7 +4,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
 
-public static class XingheBrandResources
+public static class StellarRiverBrandResources
 {
     [DllImport("version.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern int GetFileVersionInfoSize(string path, out int handle);

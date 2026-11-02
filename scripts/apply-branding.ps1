@@ -61,7 +61,7 @@ foreach ($relative in $files) {
         })
     } elseif ($relative -eq 'WeaselServer\WeaselServerApp.cpp') {
         $text = Replace-Required $text '  win_sparkle_init();' `
-            '  // Xinghe updates are published manually; do not start the upstream updater.'
+            '  // Project updates are published manually; do not start the upstream updater.'
         $text = Replace-Required $text '  win_sparkle_cleanup();' ''
         $text = Replace-Required $text 'std::bind(open, L"https://rime.im/")' `
             ('std::bind(open, L"' + $brand.projectUrl + '")')
