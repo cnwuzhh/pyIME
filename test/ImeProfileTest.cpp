@@ -4,6 +4,7 @@
 #include <rime_levers_api.h>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 #include <wincodec.h>
 #include <windows.h>
@@ -17,9 +18,10 @@ void Require(bool condition, const char *message) {
 }
 
 bool HasExpectedSchemaOrder(const RimeSchemaList &schemas) {
-  return schemas.size == 2 &&
+  return schemas.size == 3 &&
          std::string(schemas.list[0].schema_id) == "luna_pinyin_simp" &&
-         std::string(schemas.list[1].schema_id) == "luna_pinyin";
+         std::string(schemas.list[1].schema_id) == "luna_pinyin" &&
+         std::string(schemas.list[2].schema_id) == "jaroomaji";
 }
 
 void VerifyWizardDefaults(RimeApi *api) {
@@ -36,7 +38,7 @@ void VerifyWizardDefaults(RimeApi *api) {
             "First-install settings configuration is unavailable.");
     if (name == "default") {
       char schema[128]{};
-      Require(api->config_list_size(&config, "schema_list") == 2 &&
+      Require(api->config_list_size(&config, "schema_list") == 3 &&
                   api->config_get_string(&config, "schema_list/@0/schema",
                                          schema, sizeof(schema)) &&
                   std::string(schema) == "luna_pinyin_simp",
@@ -45,6 +47,10 @@ void VerifyWizardDefaults(RimeApi *api) {
                                      sizeof(schema)) &&
                   std::string(schema) == "luna_pinyin",
               "First-install wizard did not put traditional Pinyin second.");
+      Require(api->config_get_string(&config, "schema_list/@2/schema", schema,
+                                     sizeof(schema)) &&
+                  std::string(schema) == "jaroomaji",
+              "First-install wizard did not put Japanese third.");
     } else {
       weasel::UIStyle style;
       LoadWeaselUIStyle(&config, style);
@@ -65,8 +71,8 @@ void VerifyWizardDefaults(RimeApi *api) {
   const bool selected_order = HasExpectedSchemaOrder(selected);
   levers->schema_list_destroy(&selected);
   levers->custom_settings_destroy(settings);
-  Require(selected_order,
-          "First-install checked schemes are not simplified then traditional.");
+  Require(selected_order, "First-install checked schemes are not simplified, "
+                          "traditional, Japanese.");
   std::cout
       << "PASS first-install checked schemes, order and appearance defaults\n";
 }
@@ -103,7 +109,9 @@ void ExpectCommit(RimeApi *api, RimeSessionId session,
   Require(api->get_commit(session, &commit), "No text was committed.");
   const std::string actual = commit.text;
   api->free_commit(&commit);
-  Require(actual == expected, "Committed text did not match.");
+  if (actual != expected)
+    throw std::runtime_error("Committed text did not match; expected=" +
+                             expected + ", actual=" + actual);
 }
 
 void VerifyShiftSwitching(RimeApi *api, RimeSessionId session) {
@@ -135,6 +143,96 @@ void VerifyShiftSwitching(RimeApi *api, RimeSessionId session) {
     Require(!api->get_option(session, "ascii_mode"),
             "Holding Shift incorrectly toggled input mode.");
   }
+}
+
+void VerifyJapaneseInput(RimeApi *api, RimeSessionId session,
+                         const weasel::UIStyle &base_style) {
+  Require(api->select_schema(session, "jaroomaji"),
+          "Japanese scheme selection failed.");
+  Require(!api->get_option(session, "ascii_mode"),
+          "Japanese scheme must start in Japanese rather than English mode.");
+  RimeConfig config{};
+  Require(api->schema_open("jaroomaji", &config),
+          "Japanese schema configuration is unavailable.");
+  weasel::UIStyle style = base_style;
+  LoadWeaselUIStyle(&config, style, false);
+  api->config_close(&config);
+  Require(style.font_face.find(L"Yu Gothic UI") != std::wstring::npos &&
+              style.layout_type == weasel::UIStyle::LAYOUT_HORIZONTAL &&
+              style.hilited_candidate_back_color ==
+                  base_style.hilited_candidate_back_color,
+          "Japanese must use Japanese font fallbacks and the same candidate "
+          "style.");
+  for (const auto &example :
+       {std::pair<const char *, const char *>{"hiragana", u8"ひらがな"},
+        {"gakkou", u8"がっこう"}}) {
+    Require(api->simulate_key_sequence(session, example.first),
+            "Japanese romaji input failed.");
+    Require(api->process_key(session, 0xFF0D, 0),
+            "Enter did not confirm the Japanese kana composition.");
+    ExpectCommit(api, session, example.second);
+  }
+  api->process_key(session, 0xFFE1, 1);
+  for (char letter : std::string("KATAKANA")) {
+    Require(api->process_key(session, letter, 1),
+            "Shift+letter Japanese katakana input failed.");
+  }
+  api->process_key(session, 0xFFE1, 0x40000000);
+  Require(!api->get_option(session, "ascii_mode"),
+          "Typing Japanese katakana with Shift toggled English mode.");
+  Require(api->process_key(session, 0xFF0D, 0),
+          "Enter did not confirm the Japanese katakana.");
+  ExpectCommit(api, session, u8"カタカナ");
+  Require(api->simulate_key_sequence(session, "nihongo"),
+          "Japanese kanji reading input failed.");
+  RIME_STRUCT(RimeContext, context);
+  Require(api->get_context(session, &context),
+          "Japanese candidates are unavailable.");
+  int candidate = -1;
+  const bool five_per_page = context.menu.page_size == 5;
+  for (int i = 0; i < context.menu.num_candidates; ++i) {
+    if (std::string(context.menu.candidates[i].text) == u8"日本語")
+      candidate = i;
+  }
+  api->free_context(&context);
+  Require(
+      five_per_page && candidate >= 0,
+      "Japanese first-page candidates must contain the expected kanji word.");
+  Require(api->process_key(session, '1' + candidate, 0),
+          "Japanese kanji candidate selection failed.");
+  ExpectCommit(api, session, u8"日本語");
+  Require(api->simulate_key_sequence(session, "kanji"),
+          "Japanese space-selection reading failed.");
+  RIME_STRUCT(RimeContext, word);
+  Require(api->get_context(session, &word),
+          "Japanese word-selection candidates are unavailable.");
+  int word_index = -1;
+  for (int i = 0; i < word.menu.num_candidates; ++i) {
+    if (std::string(word.menu.candidates[i].text) == u8"漢字")
+      word_index = i;
+  }
+  api->free_context(&word);
+  Require(word_index >= 0,
+          "The expected Japanese homophone is missing from the first page.");
+  for (int i = 0; i < word_index; ++i) {
+    Require(api->process_key(session, 0xFF54, 0),
+            "Down did not select the Japanese homophone.");
+  }
+  Require(api->process_key(session, ' ', 0),
+          "Space did not confirm the Japanese candidate.");
+  ExpectCommit(api, session, u8"漢字");
+  Require(api->simulate_key_sequence(session, "nihongo"),
+          "Japanese raw-letter confirmation input failed.");
+  Require(api->process_key(session, 0xFF0D, 1),
+          "Shift+Enter did not confirm the Japanese raw input.");
+  ExpectCommit(api, session, "nihongo");
+  Require(api->process_key(session, ',', 0), "Japanese comma input failed.");
+  ExpectCommit(api, session, u8"、");
+  Require(api->process_key(session, '.', 0), "Japanese period input failed.");
+  ExpectCommit(api, session, u8"。");
+  VerifyShiftSwitching(api, session);
+  std::cout << "PASS Japanese hiragana, katakana, small tsu, kanji commit, "
+               "punctuation and Shift English\n";
 }
 
 void SavePreview(weasel::UIStyle style, const weasel::Context &context,
@@ -297,12 +395,14 @@ int main(int argc, char *argv[]) {
     Require(api->get_schema_list(&schemas), "Schema list unavailable.");
     const bool ordered_schemas = HasExpectedSchemaOrder(schemas);
     const bool named_schemas =
-        schemas.size == 2 &&
+        schemas.size == 3 &&
         std::string(schemas.list[0].name) == u8"简体拼音" &&
-        std::string(schemas.list[1].name) == u8"繁体拼音";
+        std::string(schemas.list[1].name) == u8"繁体拼音" &&
+        std::string(schemas.list[2].name) == u8"日语";
     api->free_schema_list(&schemas);
     Require(ordered_schemas && named_schemas,
-            "Expected named simplified and traditional schemes in that order.");
+            "Expected named simplified, traditional and Japanese schemes in "
+            "that order.");
 
     RimeConfig config{};
     Require(api->config_open("weasel", &config),
@@ -366,6 +466,7 @@ int main(int argc, char *argv[]) {
             "Traditional candidate selection failed.");
     ExpectCommit(api, session, u8"中國");
     VerifyShiftSwitching(api, session);
+    VerifyJapaneseInput(api, session, style);
     Require(
         api->select_schema(session, "luna_pinyin_simp") &&
             api->get_option(session, "zh_hans") &&
@@ -374,7 +475,7 @@ int main(int argc, char *argv[]) {
     std::cout << "PASS traditional Chinese commit and simplified/traditional "
                  "mode isolation\n";
     api->destroy_session(session);
-    std::cout << "PASS Shift English switching in both Pinyin schemes, "
+    std::cout << "PASS Shift English switching in all three schemes, "
                  "pending-code commit and non-toggle gestures\n";
     if (argc == 5)
       SavePreview(style, preview, u8tow(argv[4]).c_str());

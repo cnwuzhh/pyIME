@@ -1,6 +1,6 @@
 # 星河输入法 · Stellar River IME
 
-星河输入法是面向 Windows 的中文输入法，目标是逐步打磨接近主流商业输入法的使用体验。源码项目名和 GitHub 仓库仍为 `pyIME`。
+星河输入法是面向 Windows 的中日文输入法，目标是逐步打磨接近主流商业输入法的使用体验。源码项目名和 GitHub 仓库仍为 `pyIME`。
 
 ## 当前基线
 
@@ -9,20 +9,33 @@
 - [`vendor/weasel`](https://github.com/rime/weasel)：小狼毫 Windows TSF 前端，负责系统集成、候选窗和部署工具。
 - [`vendor/weasel/librime`](https://github.com/rime/librime)：Rime 输入法引擎，作为 Weasel 的上游子模块固定版本。
 - [`config/rime-ice`](https://github.com/iDvel/rime-ice)：雾凇拼音方案与词库，作为独立子模块固定版本。
+- [`config/rime-jaroomaji`](https://github.com/lazyfoxchan/rime-jaroomaji)：日语罗马字方案与词库，以子模块固定版本，不依赖 Lua。
 
-Weasel 和雾凇拼音保留各自的上游代码与许可证。当前使用上游 TSF 实现，已加入 pyIME 的简体中文、Shift 切换和候选窗配置，不是搜狗输入法的完整复刻。
+各上游组件保留各自的代码与许可证。当前使用上游 TSF 实现，已加入简繁拼音、日语、Shift 英文切换和候选窗配置，不是搜狗输入法的完整复刻。
 
 ## 当前输入体验
 
-- 首次安装默认勾选并排序为 **简体拼音 → 繁体拼音**，首次启动默认使用简体拼音。对应方案为 `luna_pinyin_simp` 和 `luna_pinyin`，不默认勾选注音、仓颉等其他方案。
+- 首次安装默认勾选并排序为 **简体拼音 → 繁体拼音 → 日语**，首次启动默认使用简体拼音。对应方案为 `luna_pinyin_simp`、`luna_pinyin` 和 `jaroomaji`，不默认勾选注音、仓颉等其他方案。
 - 简体拼音中 `zhongguo` 输出“中国”；选择繁体拼音后输出“中國”。切换方案时分别恢复对应字形，避免简体状态带入繁体方案。
-- 英文沿用 Shift 直输模式，简体和繁体方案都可以切换；不额外添加第三个英文方案或修改 Windows 英语键盘。可用 F4 打开方案菜单，在简体和繁体拼音之间选择。
-- 轻按左或右 Shift 切换中英文；正在输入拼音时，先把原始拼音字母上屏，再切换到英文。例如输入 `nihao` 后按 Shift，上屏 `nihao`，而不是“你好”。
+- 英文沿用 Shift 直输模式，简体、繁体和日语方案都可以切换；不额外添加独立英文方案或修改 Windows 英语键盘。可用 F4 打开方案菜单，选择所需方案。
+- 轻按左或右 Shift 在当前文字模式与英文之间切换；正在输入时，先把原始字母上屏，再切换到英文。例如输入 `nihao` 后按 Shift，上屏 `nihao`，而不是“你好”。
 - Shift 与字母组合使用不触发中英文切换；长按 Shift 不作为轻按切换处理。
 - 候选窗采用已确认的经典桌面样式：白底、横向每页 5 个候选、蓝色选中、白色选中文字、圆角、上方显示拼音。使用自有配置，不复制搜狗商标或皮肤资源，不宣称像素级一致。
 - 用户已有的 `default.custom.yaml`、`weasel.custom.yaml` 仍在默认配置之后应用，不覆盖个人设置。升级后如保留旧方案或旧主题，请通过星河输入法设置选择简化字方案和 `Stellar River Light` 主题，并执行“重新部署”；旧的用户自定义按键和布局优先级仍更高。
 
 配置保存在 [`config/pyime/`](./config/pyime/)，随安装包分发。构建时使用 librime 的 YAML 配置接口将默认值合入数据文件，让首次安装设置向导和运行时保持一致，同时保留用户补丁入口。
+
+## 日语输入
+
+按 **F4 → 日语** 启用罗马字输入。这是星河内部的 Rime 方案，不增加独立 Windows 日语键盘或改变系统语言。选择日语方案后默认进入日语，而不是英文模式：
+
+- 小写罗马字输入假名，**Enter** 直接确认假名，例如 `hiragana` → `ひらがな`、`gakkou` → `がっこう`。
+- 大写罗马字输入片假名，例如按住 Shift 输入 `KATAKANA`，再按 Enter → `カタカナ`；Shift+字母不会切走输入模式。
+- 罗马字输入读音后，从候选中选择汉字词，例如 `nihongo` 的候选包含 `日本語`；使用方向键选择、空格或数字确认。
+- **Shift+Enter** 确认当前罗马字母；轻按左右 Shift 切换日语和英文，行为与中文方案一致。
+- 逗号、句号分别输出日文标点 `、`、`。`。候选窗沿用白底、横向每页 5 个候选和蓝色选中，日语单独使用 Yu Gothic UI / Meiryo 等字体回退。
+
+此功能基于 Rime 词典式转换，复用 Mozc、JMdict、KANJIDIC2 等数据，**并未集成 Mozc 的转换引擎，也不宣称具备同等整句预测或文节编辑能力**。首次部署会编译新增的大词库，耗时及磁盘占用较原来增加。已有用户自定义方案列表不会被覆盖；升级后如看不到“日语”，请在输入法设置中勾选“日语”并重新部署。
 
 ## 产品名称和兼容性
 
@@ -87,7 +100,7 @@ Boost 使用 [`scripts/boost-config.jam`](./scripts/boost-config.jam) 中的官�
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-profile.ps1
 ```
 
-测试从根目录 `output` 的星河安装包解压实际配置和 Rime DLL，检查安装器品牌、所有程序各语言版本信息、对话框及字符串资源和上游许可证；通过安装向导使用的选中方案 API 验证默认勾选简体、繁体及其顺序，并验证默认进入简体、“中国”/“中國”候选和上屏、两个方案内的左右 Shift 切换、拼音字母上屏及组合键不误切换。另用空用户补丁、已有字体补丁和已有用户的逆序方案列表分别验证部署行为，确认保留个人选择且不改写自定义文件；不读写真实用户词库或系统输入设置。
+测试从根目录 `output` 的星河安装包解压实际配置和 Rime DLL，检查安装器品牌、所有程序各语言版本信息、对话框及字符串资源和上游许可证；通过安装向导使用的选中方案 API 验证默认勾选简体、繁体、日语及其顺序。验证中文繁简输出、日语平假名/片假名/汉字/标点、三个方案内的 Shift 英文切换，以及日语词库及许可的打包完整性。另用空用户补丁、已有字体补丁和已有用户的逆序方案列表分别验证部署行为，确认保留个人选择且不改写自定义文件；不读写真实用户词库或系统输入设置。
 
 测试会短暂显示原生候选窗，用实际编译的 Weasel UI 检查横向布局、白底与蓝色选中，生成 [`output/candidate-preview.png`](./output/candidate-preview.png)。需要可用的 Windows 桌面；这不是网页模拟，也不替代安装后的真实应用 TSF 兼容性测试。测试成功后清理其解压目录，图片和安装包留在 `output`，不提交 Git。
 
@@ -100,6 +113,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-profile.ps1
 ## 许可证
 
 上游组件各自适用其仓库中的许可证：Weasel 为 GPL-3.0，雾凇拼音为 GPL-3.0，librime 为 BSD-3-Clause。分发包含这些组件的构建时，必须遵守各自许可证及其依赖项的要求。pyIME 自有代码的许可证将在添加自有实现时另行确定。
+
+日语方案 rime-jaroomaji 的自有文件采用 Apache-2.0，数据文件各自保留来源许可：Mozc 数据含 Google 的 BSD 条款以及 IPAdic/NAIST/ICOT 声明；JMdict 和 KANJIDIC2 数据由 James William BREEN 及 Electronic Dictionary Research and Development Group（EDRDG）持有版权，采用 CC BY-SA 4.0。词库内容保持上游原样，不将这些数据声明为自有版权。详见[日语来源声明](./config/japanese-NOTICES.txt)、[EDRDG 许可](./licenses/japanese/EDRDG-LICENCE.html)和 [CC BY-SA 4.0 全文](./licenses/japanese/CC-BY-SA-4.0.txt)。对应许可和原始说明会随安装包分发。
 
 ## 进展日志
 

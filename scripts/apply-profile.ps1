@@ -11,6 +11,33 @@ if (-not $BoostRoot) {
 }
 $profile = Join-Path $PSScriptRoot '..\config\pyime'
 $encoding = New-Object System.Text.UTF8Encoding($false)
+$japanese = Join-Path $root 'config\rime-jaroomaji'
+foreach ($file in @(
+    'jaroomaji.schema.yaml',
+    'jaroomaji.dict.yaml',
+    'jaroomaji.user.dict.yaml',
+    'jaroomaji.kana_kigou.dict.yaml',
+    'jaroomaji.mozc.dict.yaml',
+    'jaroomaji.jmdict.dict.yaml',
+    'jaroomaji.mozcemoji.dict.yaml',
+    'jaroomaji.kanjidic2.dict.yaml'
+)) {
+    $source = Join-Path $japanese $file
+    if (-not (Test-Path -LiteralPath $source)) {
+        throw "Missing Japanese input dependency: $source. Initialize the Git submodules first."
+    }
+    Copy-Item -LiteralPath $source -Destination (Join-Path $DataDirectory $file) -Force
+}
+$packageRoot = Split-Path -Parent $DataDirectory
+foreach ($notice in @(
+    @{ Source = (Join-Path $japanese 'LICENSE'); Name = 'japanese-LICENSE.txt' },
+    @{ Source = (Join-Path $japanese 'README.md'); Name = 'japanese-README.txt' },
+    @{ Source = (Join-Path $root 'config\japanese-NOTICES.txt'); Name = 'japanese-NOTICES.txt' },
+    @{ Source = (Join-Path $root 'licenses\japanese\EDRDG-LICENCE.html'); Name = 'japanese-EDRDG-LICENCE.html' },
+    @{ Source = (Join-Path $root 'licenses\japanese\CC-BY-SA-4.0.txt'); Name = 'japanese-CC-BY-SA-4.0.txt' }
+)) {
+    Copy-Item -LiteralPath $notice.Source -Destination (Join-Path $packageRoot $notice.Name) -Force
+}
 
 foreach ($name in @('default', 'weasel')) {
     $source = Join-Path $profile "pyime.$name.yaml"
@@ -58,4 +85,4 @@ try {
     Pop-Location
 }
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination (Join-Path $weasel 'output\README.txt') -Force
-Write-Host 'Simplified-first and traditional Pinyin defaults, Shift switching and candidate style applied.'
+Write-Host 'Simplified, traditional and Japanese input defaults, Shift switching and candidate style applied.'

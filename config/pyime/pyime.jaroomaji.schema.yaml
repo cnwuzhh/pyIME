@@ -1,0 +1,6 @@
+patch:
+  schema/name: 日语
+  switches/@0/reset: 0
+  style/font_face: "Yu Gothic UI, Meiryo, Microsoft YaHei"
+  style/label_font_face: "Yu Gothic UI, Meiryo, Microsoft YaHei"
+  style/comment_font_face: "Yu Gothic UI, Meiryo, Microsoft YaHei"

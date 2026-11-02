@@ -77,6 +77,14 @@ foreach ($relative in $files) {
             ('Name "' + $brand.name + ' ${WEASEL_VERSION}"')
         $text = Replace-Required $text 'OutFile "archives\weasel-${PRODUCT_VERSION}-installer.exe"' `
             ('OutFile "archives\' + $brand.installerFile + '"')
+        $text = Replace-Required $text '  File "README.txt"' @'
+  File "README.txt"
+  File "japanese-LICENSE.txt"
+  File "japanese-README.txt"
+  File "japanese-NOTICES.txt"
+  File "japanese-EDRDG-LICENCE.html"
+  File "japanese-CC-BY-SA-4.0.txt"
+'@
         $text = [regex]::Replace($text, '(?m)^LangString .*$', {
             param($match)
             $match.Value.Replace('Weasel', $brand.englishName).Replace($oldName, $brand.name)

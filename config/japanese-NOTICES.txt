@@ -1,0 +1,40 @@
+Stellar River IME - Japanese input acknowledgements
+
+Japanese input uses rime-jaroomaji by lazy fox chan:
+https://github.com/lazyfoxchan/rime-jaroomaji
+Pinned revision: b743307c0251f388976662ee2f9e267043785116
+
+The schema and the project's own dictionary/configuration files are provided
+under Apache License 2.0. See japanese-LICENSE.txt and japanese-README.txt.
+Stellar River changes the schema display name, defaults to Japanese rather
+than ASCII mode, and selects Japanese font fallbacks. Dictionary contents
+are distributed unmodified, including their original attribution headers.
+The Rime engine compiles these dictionaries locally on first deployment.
+This input scheme does not bundle or run Google's Mozc conversion engine.
+
+Dictionary sources retain their separate licenses:
+
+1. jaroomaji.mozc.dict.yaml and jaroomaji.mozcemoji.dict.yaml
+   Converted from Google Mozc data. Copyright 2010-2018 Google Inc.
+   The BSD redistribution terms and disclaimers are preserved in the files.
+   Mozc dictionary data also contains notices for IPAdic, NAIST and ICOT;
+   those notices remain in the original dictionary file header.
+   https://github.com/google/mozc
+   https://github.com/google/mozc/tree/master/src/data/dictionary_oss
+
+2. jaroomaji.jmdict.dict.yaml and jaroomaji.kanjidic2.dict.yaml
+   Derived from JMdict and KANJIDIC2. Copyright is held by James William
+   BREEN and the Electronic Dictionary Research and Development Group
+   (EDRDG). These data are licensed under Creative Commons
+   Attribution-ShareAlike 4.0 International, not Apache License 2.0.
+   Their conversion to Rime format was performed by the upstream project.
+   Original source notices and links remain in each installed dictionary.
+   See japanese-EDRDG-LICENCE.html and japanese-CC-BY-SA-4.0.txt.
+   https://www.edrdg.org/edrdg/licence.html
+   https://www.edrdg.org/jmdict/j_jmdict.html
+   https://www.edrdg.org/wiki/index.php/KANJIDIC_Project
+   https://creativecommons.org/licenses/by-sa/4.0/
+
+These acknowledgements do not imply endorsement by any upstream author,
+dictionary contributor, Google, NAIST, ICOT or EDRDG. The upstream project
+and data authors retain their respective copyrights.

@@ -5,3 +5,6 @@
 [submodule "config/rime-ice"]
 	path = config/rime-ice
 	url = https://github.com/iDvel/rime-ice.git
+[submodule "config/rime-jaroomaji"]
+	path = config/rime-jaroomaji
+	url = https://github.com/lazyfoxchan/rime-jaroomaji.git

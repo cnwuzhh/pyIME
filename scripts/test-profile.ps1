@@ -17,6 +17,27 @@ if ($LASTEXITCODE -ne 0) {
     throw "Installer extraction failed with exit code $LASTEXITCODE."
 }
 & (Join-Path $PSScriptRoot 'test-branding.ps1') -Installer $Installer -PackageDirectory $package
+$japanese = Join-Path $root 'config\rime-jaroomaji'
+foreach ($dictionary in (Get-ChildItem -LiteralPath $japanese -Filter '*.dict.yaml')) {
+    $installed = Join-Path $package ('data\' + $dictionary.Name)
+    if ((Get-FileHash -LiteralPath $dictionary.FullName -Algorithm SHA256).Hash -ne
+        (Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash) {
+        throw "The packaged Japanese dictionary was modified: $($dictionary.Name)"
+    }
+}
+foreach ($notice in @(
+    @{ Source = (Join-Path $japanese 'LICENSE'); Name = 'japanese-LICENSE.txt' },
+    @{ Source = (Join-Path $japanese 'README.md'); Name = 'japanese-README.txt' },
+    @{ Source = (Join-Path $root 'config\japanese-NOTICES.txt'); Name = 'japanese-NOTICES.txt' },
+    @{ Source = (Join-Path $root 'licenses\japanese\EDRDG-LICENCE.html'); Name = 'japanese-EDRDG-LICENCE.html' },
+    @{ Source = (Join-Path $root 'licenses\japanese\CC-BY-SA-4.0.txt'); Name = 'japanese-CC-BY-SA-4.0.txt' }
+)) {
+    if ((Get-FileHash -LiteralPath $notice.Source -Algorithm SHA256).Hash -ne
+        (Get-FileHash -LiteralPath (Join-Path $package $notice.Name) -Algorithm SHA256).Hash) {
+        throw "The packaged Japanese license or notice does not match: $($notice.Name)"
+    }
+}
+Write-Host 'JAPANESE_PACKAGE_PASS=unmodified dictionaries, schema license, EDRDG notices and CC BY-SA text'
 
 $dlls = Get-ChildItem -LiteralPath $package -Filter 'rime*.dll' | Where-Object {
     $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
