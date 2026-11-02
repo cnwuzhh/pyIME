@@ -12,7 +12,8 @@ int main(int argc, char *argv[]) {
     traits.app_name = "pyime.profile.build";
     traits.log_dir = ".";
     rime_get_api()->setup(&traits);
-    for (const std::string name : {"default", "weasel"}) {
+    for (const std::string name : {"default", "weasel", "luna_pinyin.schema",
+                                   "luna_pinyin_simp.schema"}) {
       const rime::path base = rime::path(argv[1]) / (name + ".yaml");
       const rime::path patch_file =
           rime::path(argv[2]) / ("pyime." + name + ".yaml");

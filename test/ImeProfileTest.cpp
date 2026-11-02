@@ -16,6 +16,12 @@ void Require(bool condition, const char *message) {
     throw std::runtime_error(message);
 }
 
+bool HasExpectedSchemaOrder(const RimeSchemaList &schemas) {
+  return schemas.size == 2 &&
+         std::string(schemas.list[0].schema_id) == "luna_pinyin_simp" &&
+         std::string(schemas.list[1].schema_id) == "luna_pinyin";
+}
+
 void VerifyWizardDefaults(RimeApi *api) {
   RimeModule *module = api->find_module("levers");
   Require(module && module->get_api, "Settings API is unavailable.");
@@ -30,11 +36,15 @@ void VerifyWizardDefaults(RimeApi *api) {
             "First-install settings configuration is unavailable.");
     if (name == "default") {
       char schema[128]{};
-      Require(api->config_list_size(&config, "schema_list") == 1 &&
+      Require(api->config_list_size(&config, "schema_list") == 2 &&
                   api->config_get_string(&config, "schema_list/@0/schema",
                                          schema, sizeof(schema)) &&
                   std::string(schema) == "luna_pinyin_simp",
               "First-install wizard did not select simplified Chinese.");
+      Require(api->config_get_string(&config, "schema_list/@1/schema", schema,
+                                     sizeof(schema)) &&
+                  std::string(schema) == "luna_pinyin",
+              "First-install wizard did not put traditional Pinyin second.");
     } else {
       weasel::UIStyle style;
       LoadWeaselUIStyle(&config, style);
@@ -45,7 +55,20 @@ void VerifyWizardDefaults(RimeApi *api) {
     }
     levers->custom_settings_destroy(settings);
   }
-  std::cout << "PASS first-install scheme and appearance defaults\n";
+  RimeSwitcherSettings *switcher = levers->switcher_settings_init();
+  auto *settings = reinterpret_cast<RimeCustomSettings *>(switcher);
+  Require(settings && levers->load_settings(settings),
+          "First-install switcher selection could not be loaded.");
+  RimeSchemaList selected{};
+  Require(levers->get_selected_schema_list(switcher, &selected),
+          "First-install checked schemes are unavailable.");
+  const bool selected_order = HasExpectedSchemaOrder(selected);
+  levers->schema_list_destroy(&selected);
+  levers->custom_settings_destroy(settings);
+  Require(selected_order,
+          "First-install checked schemes are not simplified then traditional.");
+  std::cout
+      << "PASS first-install checked schemes, order and appearance defaults\n";
 }
 
 struct Runtime {
@@ -81,6 +104,37 @@ void ExpectCommit(RimeApi *api, RimeSessionId session,
   const std::string actual = commit.text;
   api->free_commit(&commit);
   Require(actual == expected, "Committed text did not match.");
+}
+
+void VerifyShiftSwitching(RimeApi *api, RimeSessionId session) {
+  for (int shift : {0xFFE1, 0xFFE2}) {
+    TapShift(api, session, shift);
+    Require(api->get_option(session, "ascii_mode"),
+            "Shift did not switch to English.");
+    Require(!api->process_key(session, 'x', 0),
+            "English mode did not pass an ASCII letter to the application.");
+    TapShift(api, session, shift);
+    Require(!api->get_option(session, "ascii_mode"),
+            "Shift did not switch back to Chinese.");
+    Require(api->simulate_key_sequence(session, "nihao"),
+            "Pending Pinyin input failed.");
+    TapShift(api, session, shift);
+    Require(api->get_option(session, "ascii_mode"),
+            "Pending-input Shift did not select English.");
+    ExpectCommit(api, session, "nihao");
+    TapShift(api, session, shift);
+    api->process_key(session, shift, 1);
+    api->process_key(session, 'A', 1);
+    api->process_key(session, shift, 0x40000000);
+    Require(!api->get_option(session, "ascii_mode"),
+            "Shift+letter incorrectly toggled input mode.");
+    api->clear_composition(session);
+    api->process_key(session, shift, 1);
+    Sleep(550);
+    api->process_key(session, shift, 0x40000000);
+    Require(!api->get_option(session, "ascii_mode"),
+            "Holding Shift incorrectly toggled input mode.");
+  }
 }
 
 void SavePreview(weasel::UIStyle style, const weasel::Context &context,
@@ -203,8 +257,8 @@ void SavePreview(weasel::UIStyle style, const weasel::Context &context,
 
 int main(int argc, char *argv[]) {
   try {
-    Require(argc == 4 || argc == 5,
-            "Expected shared-data user-data font-point [preview-png].");
+    Require(argc == 4 || argc == 5, "Expected shared-data user-data font-point "
+                                    "[preview-png|--existing-selection].");
     Require(SetProcessDpiAwarenessContext(
                 DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2),
             "DPI-aware native preview setup failed.");
@@ -213,6 +267,26 @@ int main(int argc, char *argv[]) {
     const RimeSessionId session = api->create_session();
     Require(session != 0, "Session creation failed.");
     char schema[128]{};
+    if (argc == 5 && std::string(argv[4]) == "--existing-selection") {
+      Require(
+          api->get_current_schema(session, schema, sizeof(schema)) &&
+              std::string(schema) == "luna_pinyin",
+          "An existing user's preferred traditional scheme was overridden.");
+      RimeSchemaList selected{};
+      Require(api->get_schema_list(&selected),
+              "Existing user's selected schemes are unavailable.");
+      const bool preserved =
+          selected.size == 2 &&
+          std::string(selected.list[0].schema_id) == "luna_pinyin" &&
+          std::string(selected.list[1].schema_id) == "luna_pinyin_simp";
+      api->free_schema_list(&selected);
+      api->destroy_session(session);
+      Require(preserved,
+              "Existing user's scheme selection order was overridden.");
+      std::cout << "PASS existing user's selected scheme order and default "
+                   "preserved\n";
+      return 0;
+    }
     Require(api->get_current_schema(session, schema, sizeof(schema)) &&
                 std::string(schema) == "luna_pinyin_simp",
             "The default scheme is not simplified Chinese.");
@@ -221,9 +295,14 @@ int main(int argc, char *argv[]) {
             "The initial session is not simplified Chinese input.");
     RimeSchemaList schemas{};
     Require(api->get_schema_list(&schemas), "Schema list unavailable.");
-    const bool one_schema = schemas.size == 1;
+    const bool ordered_schemas = HasExpectedSchemaOrder(schemas);
+    const bool named_schemas =
+        schemas.size == 2 &&
+        std::string(schemas.list[0].name) == u8"简体拼音" &&
+        std::string(schemas.list[1].name) == u8"繁体拼音";
     api->free_schema_list(&schemas);
-    Require(one_schema, "Unexpected default scheme choices.");
+    Require(ordered_schemas && named_schemas,
+            "Expected named simplified and traditional schemes in that order.");
 
     RimeConfig config{};
     Require(api->config_open("weasel", &config),
@@ -265,37 +344,38 @@ int main(int argc, char *argv[]) {
     std::cout
         << "PASS simplified Chinese candidate, five-item page and commit\n";
 
-    for (int shift : {0xFFE1, 0xFFE2}) {
-      TapShift(api, session, shift);
-      Require(api->get_option(session, "ascii_mode"),
-              "Shift did not switch to English.");
-      Require(!api->process_key(session, 'x', 0),
-              "English mode did not pass an ASCII letter to the application.");
-      TapShift(api, session, shift);
-      Require(!api->get_option(session, "ascii_mode"),
-              "Shift did not switch back to Chinese.");
-      Require(api->simulate_key_sequence(session, "nihao"),
-              "Pending Pinyin input failed.");
-      TapShift(api, session, shift);
-      Require(api->get_option(session, "ascii_mode"),
-              "Pending-input Shift did not select English.");
-      ExpectCommit(api, session, "nihao");
-      TapShift(api, session, shift);
-      api->process_key(session, shift, 1);
-      api->process_key(session, 'A', 1);
-      api->process_key(session, shift, 0x40000000);
-      Require(!api->get_option(session, "ascii_mode"),
-              "Shift+letter incorrectly toggled input mode.");
-      api->clear_composition(session);
-      api->process_key(session, shift, 1);
-      Sleep(550);
-      api->process_key(session, shift, 0x40000000);
-      Require(!api->get_option(session, "ascii_mode"),
-              "Holding Shift incorrectly toggled input mode.");
-    }
+    VerifyShiftSwitching(api, session);
+    Require(api->select_schema(session, "luna_pinyin"),
+            "Traditional Pinyin selection failed.");
+    Require(!api->get_option(session, "zh_hans") &&
+                api->get_option(session, "zh_hant"),
+            "Traditional Pinyin inherited simplified output mode.");
+    Require(api->simulate_key_sequence(session, "zhongguo"),
+            "Traditional Pinyin input failed.");
+    RIME_STRUCT(RimeContext, traditional);
+    Require(api->get_context(session, &traditional),
+            "Traditional candidates unavailable.");
+    const bool traditional_candidate =
+        traditional.menu.num_candidates > 0 &&
+        std::string(traditional.menu.candidates[0].text) == u8"中國";
+    api->free_context(&traditional);
+    Require(
+        traditional_candidate,
+        "Traditional Pinyin did not produce the expected traditional text.");
+    Require(api->select_candidate_on_current_page(session, 0),
+            "Traditional candidate selection failed.");
+    ExpectCommit(api, session, u8"中國");
+    VerifyShiftSwitching(api, session);
+    Require(
+        api->select_schema(session, "luna_pinyin_simp") &&
+            api->get_option(session, "zh_hans") &&
+            !api->get_option(session, "zh_hant"),
+        "Returning to simplified Pinyin did not restore simplified output.");
+    std::cout << "PASS traditional Chinese commit and simplified/traditional "
+                 "mode isolation\n";
     api->destroy_session(session);
-    std::cout << "PASS both Shift keys, pending-code commit and Shift+letter "
-                 "non-toggle\n";
+    std::cout << "PASS Shift English switching in both Pinyin schemes, "
+                 "pending-code commit and non-toggle gestures\n";
     if (argc == 5)
       SavePreview(style, preview, u8tow(argv[4]).c_str());
     return 0;

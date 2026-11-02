@@ -1,0 +1,3 @@
+patch:
+  schema/name: 繁体拼音
+  switches/@2/reset: 0

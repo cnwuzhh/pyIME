@@ -27,8 +27,10 @@ foreach ($name in @('default', 'weasel')) {
     $patch = "`n__patch:`n  - pyime.$name`:/patch`n  - $name.custom:/patch?`n"
     [System.IO.File]::WriteAllText($base, $text.TrimEnd("`r", "`n") + $patch, $encoding)
 }
-if (-not (Test-Path -LiteralPath (Join-Path $DataDirectory 'luna_pinyin_simp.schema.yaml'))) {
-    throw 'The simplified Chinese schema was not included in the prepared data.'
+foreach ($schema in @('luna_pinyin_simp', 'luna_pinyin')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $DataDirectory "$schema.schema.yaml"))) {
+        throw "The required Pinyin schema was not included in the prepared data: $schema"
+    }
 }
 $weasel = Join-Path $root 'vendor\weasel'
 $tools = Join-Path $root '.build\profile-tools'
@@ -56,4 +58,4 @@ try {
     Pop-Location
 }
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination (Join-Path $weasel 'output\README.txt') -Force
-Write-Host 'pyIME simplified input, Shift switching and candidate style profile applied.'
+Write-Host 'Simplified-first and traditional Pinyin defaults, Shift switching and candidate style applied.'

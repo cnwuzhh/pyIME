@@ -61,5 +61,18 @@ New-Item -ItemType Directory -Path $overrideUser | Out-Null
 if ($LASTEXITCODE -ne 0) {
     throw "Existing-user override validation failed with exit code $LASTEXITCODE."
 }
+$existingUser = Join-Path $work 'user-existing-selection'
+New-Item -ItemType Directory -Path $existingUser | Out-Null
+$selection = Join-Path $existingUser 'default.custom.yaml'
+[System.IO.File]::WriteAllText($selection, "patch:`n  schema_list:`n    - schema: luna_pinyin`n    - schema: luna_pinyin_simp`n")
+[System.IO.File]::WriteAllText((Join-Path $existingUser 'weasel.custom.yaml'), '')
+$selectionHash = (Get-FileHash -LiteralPath $selection -Algorithm SHA256).Hash
+& (Join-Path $work 'ImeProfileTest.exe') (Join-Path $package 'data') $existingUser 14 --existing-selection
+if ($LASTEXITCODE -ne 0) {
+    throw "Existing scheme selection preservation failed with exit code $LASTEXITCODE."
+}
+if ((Get-FileHash -LiteralPath $selection -Algorithm SHA256).Hash -ne $selectionHash) {
+    throw 'The existing user scheme selection file was modified during deployment.'
+}
 Remove-Item -LiteralPath $work -Recurse -Force
 Write-Host "Profile tests passed. Native preview: $preview"
