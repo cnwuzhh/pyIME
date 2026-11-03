@@ -21,6 +21,8 @@
 - 轻按左或右 Shift 在当前文字模式与英文之间切换；正在输入时，先把原始字母上屏，再切换到英文。例如输入 `nihao` 后按 Shift，上屏 `nihao`，而不是“你好”。
 - Shift 与字母组合使用不触发中英文切换；长按 Shift 不作为轻按切换处理。
 - 候选窗采用已确认的经典桌面样式：白底、横向每页 5 个候选、蓝色选中、白色选中文字、圆角、上方显示拼音。使用自有配置，不复制搜狗商标或皮肤资源，不宣称像素级一致。
+- 有候选时，**逗号键 `,` 选择上一项、句号键 `.` 选择下一项**，不是上一页/下一页，也不会直接上屏；适用于简体、繁体和日语。未出现候选时保留各方案的标点，英文模式仍直输 ASCII 标点。要输入标点，请先确认或结束当前候选。
+- Page Up / Page Down 继续翻页；中文的 `-` / `=` 翻页保持不变，日语的 `-` 仍用于长音。候选逐项移动使用 Tab / Shift+Tab 对应动作，在横向及竖向布局都不依赖箭头方向。
 - 用户已有的 `default.custom.yaml`、`weasel.custom.yaml` 仍在默认配置之后应用，不覆盖个人设置。升级后如保留旧方案或旧主题，请通过星河输入法设置选择简化字方案和 `Stellar River Light` 主题，并执行“重新部署”；旧的用户自定义按键和布局优先级仍更高。
 
 配置保存在 [`config/pyime/`](./config/pyime/)，随安装包分发。构建时使用 librime 的 YAML 配置接口将默认值合入数据文件，让首次安装设置向导和运行时保持一致，同时保留用户补丁入口。
@@ -42,6 +44,8 @@
 品牌定义位于 [`config/branding.json`](./config/branding.json)。中文名为“星河输入法”，英文品牌为 **Stellar River**，完整产品名为 **Stellar River IME**，无空格的代码标识使用 `StellarRiver`；GitHub 仓库仍为 `pyIME`。安装器、卸载列表、开始菜单、系统输入法显示名、托盘提示、设置窗口和文件属性使用对应的中英文产品名。安装包名为 `星河输入法-0.17.4.0-setup.exe`。
 
 为了兼容此前安装及用户词库，暂时保留上游 TSF GUID、注册表路径、进程文件名以及 `%APPDATA%\Rime` 用户目录。因此这是原有 Weasel 安装的品牌定制升级，不是可与小狼毫并行注册的独立输入法；内部文件出现 `WeaselServer.exe`、`weasel.dll` 属于兼容实现，不是显示品牌。覆盖安装后如 Windows 缓存旧显示名，按安装器提示重启或注销再登录。
+
+新安装默认父目录为 `Program Files\stellariver`（按用户指定的拼写），32 位安装使用对应的 Program Files 目录。内部版本子目录继续保留，例如 64 位机器上的程序目录为 `C:\Program Files\stellariver\weasel-0.17.4`。升级会复用注册表中记录的原安装父目录，不自动搬移既有安装；用户词库目录不变。
 
 上游许可证、版权和来源说明继续保留，不将上游成果声明为完全自研。自动更新不再连接 Weasel 上游下载源，防止被上游安装包覆盖回旧品牌；“检查新版本”打开本项目的 GitHub Releases 页面，目前需要手动获取新版。
 
@@ -84,6 +88,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1
 
 这里的执行策略仅用于这次脚本进程，不改变系统执行策略。脚本在同一 `cmd.exe` 进程中配置 MSVC，并从 Weasel 根目录分别调用上游各个构建阶段，以免丢失编译器环境或沿用 librime 构建留下的工作目录。首次构建包括 Boost 和 librime 源码编译、默认数据准备、Weasel 编译和安装包生成；上游完整流程会重新生成 librime 的本地构建缓存。只修改 Weasel 后可追加 `-SkipDependencies` 复用已经生成的 Boost/librime，仍准备数据并生成新安装包；自定义 Boost/CMake 位置可通过 `-BoostRoot` 和 `-CMakeBin` 指定。
 
+候选快捷键还使用 [`patches/rime-candidate-keys.patch`](./patches/rime-candidate-keys.patch) 中的小型兼容补丁，在本项目的配置关闭 `key_binder/reinterpret_paging_key` 时，不再把用于候选移动的句号回填到后续字母输入。未设置此选项时保持上游行为。构建入口临时应用并恢复该源码补丁；`-SkipDependencies` 会核对补丁和两个运行时 DLL 的缓存哈希，不匹配时显式重编译 x64/Win32 librime，避免旧运行时忽略新配置。
+
 Boost 使用 [`scripts/boost-config.jam`](./scripts/boost-config.jam) 中的官方配置：由构建入口明确传入已验证的 `vcvarsall.bat` 路径，并设置 `rewrite-setup-scripts=off`。这避免 Boost 1.84 的自动路径识别和环境缓存失败导致架构错误或编译目标被跳过。
 
 原始构建日志输出到 `.build\build-*.log`，安装包统一放在仓库根目录的 [`output/`](./output/) 中。上游构建在 `vendor\weasel\output\archives` 中生成星河安装包，构建入口随后复制到根目录 `output`，核对 SHA-256，并显示最终路径。同名文件会被最新成功构建覆盖。工具缓存和安装包二进制不提交到 Git，`output` 中的说明文件保留在版本控制中。安装包已加入星河品牌和上述默认输入配置，尚未集成雾凇拼音；输入法安装与配置部署另行执行。安装后，可通过开始菜单中的星河输入法工具打开用户文件夹。更多上游细节见 [Weasel 构建说明](https://github.com/rime/weasel/blob/master/INSTALL.md)。
@@ -101,6 +107,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-profile.ps1
 ```
 
 测试从根目录 `output` 的星河安装包解压实际配置和 Rime DLL，检查安装器品牌、所有程序各语言版本信息、对话框及字符串资源和上游许可证；通过安装向导使用的选中方案 API 验证默认勾选简体、繁体、日语及其顺序。验证中文繁简输出、日语平假名/片假名/汉字/标点、三个方案内的 Shift 英文切换，以及日语词库及许可的打包完整性。另用空用户补丁、已有字体补丁和已有用户的逆序方案列表分别验证部署行为，确认保留个人选择且不改写自定义文件；不读写真实用户词库或系统输入设置。
+
+候选导航测试检查逗号/句号的逐项位置、不会误翻页或提交、随后继续输入不插入句号，以及四种布局、普通标点和原有翻页键。构建还调用 NSIS 预处理检查，验证全部架构分支默认使用 `stellariver` 并保留旧安装目录复用；预处理结果保存在 `.build/installer-defaults-preprocessed.nsi`，不运行安装器或修改系统注册表。
 
 测试会短暂显示原生候选窗，用实际编译的 Weasel UI 检查横向布局、白底与蓝色选中，生成 [`output/candidate-preview.png`](./output/candidate-preview.png)。需要可用的 Windows 桌面；这不是网页模拟，也不替代安装后的真实应用 TSF 兼容性测试。测试成功后清理其解压目录，图片和安装包留在 `output`，不提交 Git。
 

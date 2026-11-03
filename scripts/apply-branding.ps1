@@ -73,6 +73,11 @@ foreach ($relative in $files) {
         $replacement = "  static bool check_update() {`n    return open(L`"$($brand.projectUrl)/releases`");`n  }`n"
         $text = [regex]::Replace($text, $pattern, $replacement)
     } elseif ($relative -eq 'output\install.nsi') {
+        if ($brand.installDirectory -notmatch '^[A-Za-z0-9][A-Za-z0-9_-]*$') {
+            throw 'The default installation directory must be a single folder name.'
+        }
+        $text = Replace-Required $text '$PROGRAMFILES64\Rime' ('$PROGRAMFILES64\' + $brand.installDirectory)
+        $text = Replace-Required $text '$PROGRAMFILES\Rime' ('$PROGRAMFILES\' + $brand.installDirectory)
         $text = Replace-Required $text ('Name "' + $oldName + ' ${WEASEL_VERSION}"') `
             ('Name "' + $brand.name + ' ${WEASEL_VERSION}"')
         $text = Replace-Required $text 'OutFile "archives\weasel-${PRODUCT_VERSION}-installer.exe"' `

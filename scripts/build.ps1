@@ -8,6 +8,11 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $weasel = Join-Path $root 'vendor\weasel'
 $brand = Get-Content -LiteralPath (Join-Path $root 'config\branding.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$runtimePatch = Join-Path $root 'patches\rime-candidate-keys.patch'
+$runtimePatchHash = (Get-FileHash -LiteralPath $runtimePatch -Algorithm SHA256).Hash
+$runtimeCache = Join-Path $root '.build\rime-runtime-cache.json'
+$runtimeX64 = Join-Path $weasel 'output\rime.dll'
+$runtimeX86 = Join-Path $weasel 'output\Win32\rime.dll'
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
 $gitBin = Join-Path $env:ProgramFiles 'Git\bin'
 $pythonBin = Join-Path $root '.tools\python\Scripts'
@@ -55,8 +60,21 @@ if (-not (Test-Path -LiteralPath $localEnv)) {
 }
 
 $phases = @('boost', 'rime', 'data opencc')
+$buildRime = $true
 if ($SkipDependencies) {
     $phases = @('data opencc')
+    if ((Test-Path -LiteralPath $runtimeCache) -and
+        (Test-Path -LiteralPath $runtimeX64) -and
+        (Test-Path -LiteralPath $runtimeX86)) {
+        $cached = Get-Content -LiteralPath $runtimeCache -Raw -Encoding UTF8 | ConvertFrom-Json
+        $buildRime = $cached.patchHash -ne $runtimePatchHash -or
+            $cached.x64Hash -ne (Get-FileHash -LiteralPath $runtimeX64 -Algorithm SHA256).Hash -or
+            $cached.x86Hash -ne (Get-FileHash -LiteralPath $runtimeX86 -Algorithm SHA256).Hash
+    }
+    if ($buildRime) {
+        Write-Host 'Rime runtime patch or binaries changed; rebuilding x64 and Win32 runtimes.'
+        $phases = @('rime', 'data opencc')
+    }
 }
 
 $logs = Join-Path $root '.build'
@@ -65,6 +83,7 @@ $log = Join-Path $logs ("build-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 $sourceFiles = @(
     (Join-Path $weasel 'librime\lib\.placeholder'),
     (Join-Path $weasel 'librime\deps\opencc\CMakeLists.txt'),
+    (Join-Path $weasel 'librime\src\rime\gear\key_binder.cc'),
     (Join-Path $weasel 'output\data\weasel.yaml')
 )
 foreach ($relative in (& (Join-Path $PSScriptRoot 'apply-branding.ps1') -ListFiles)) {
@@ -87,6 +106,14 @@ $commands += 'cd /d "{0}" && call build.bat weasel installer' -f $weasel
 $command = '({0}) 2>&1' -f ($commands -join ' && ')
 $started = Get-Date
 try {
+    git -C (Join-Path $weasel 'librime') apply --check $runtimePatch
+    if ($LASTEXITCODE -ne 0) {
+        throw 'The Rime candidate key patch does not match the checked-out source.'
+    }
+    git -C (Join-Path $weasel 'librime') apply $runtimePatch
+    if ($LASTEXITCODE -ne 0) {
+        throw 'The Rime candidate key patch could not be applied.'
+    }
     & (Join-Path $PSScriptRoot 'apply-branding.ps1')
     & $env:ComSpec /d /c $command | Tee-Object -FilePath $log
     $exitCode = $LASTEXITCODE
@@ -95,6 +122,12 @@ try {
     if ($exitCode -ne 0) {
         throw "Weasel build failed with exit code $exitCode. See $log."
     }
+    if ($buildRime -and (
+        (Get-Item -LiteralPath $runtimeX64).LastWriteTime -lt $started -or
+        (Get-Item -LiteralPath $runtimeX86).LastWriteTime -lt $started)) {
+        throw 'The build did not produce both new patched Rime runtimes.'
+    }
+    & (Join-Path $PSScriptRoot 'test-installer-defaults.ps1') -Script (Join-Path $weasel 'output\install.nsi')
     $installer = Get-Item -LiteralPath (Join-Path $weasel ('output\archives\' + $brand.installerFile))
     if ($installer.Length -eq 0 -or $installer.LastWriteTime -lt $started) {
         throw 'The build did not generate a new, non-empty installer.'
@@ -108,6 +141,12 @@ try {
     if ($sourceHash -ne $outputHash) {
         throw "Installer copy verification failed: $destination"
     }
+    $cache = @{
+        patchHash = $runtimePatchHash
+        x64Hash = (Get-FileHash -LiteralPath $runtimeX64 -Algorithm SHA256).Hash
+        x86Hash = (Get-FileHash -LiteralPath $runtimeX86 -Algorithm SHA256).Hash
+    } | ConvertTo-Json
+    [System.IO.File]::WriteAllText($runtimeCache, $cache, (New-Object System.Text.UTF8Encoding($false)))
     Write-Host "Installer: $destination"
 } finally {
     # Restore tracked upstream files changed during compilation and profile packaging.

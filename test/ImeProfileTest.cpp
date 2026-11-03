@@ -145,6 +145,93 @@ void VerifyShiftSwitching(RimeApi *api, RimeSessionId session) {
   }
 }
 
+void ExpectCandidatePosition(RimeApi *api, RimeSessionId session, int page,
+                             int highlighted) {
+  RIME_STRUCT(RimeContext, context);
+  Require(api->get_context(session, &context),
+          "Candidate position is unavailable.");
+  const bool matches = context.menu.page_no == page &&
+                       context.menu.highlighted_candidate_index == highlighted;
+  api->free_context(&context);
+  Require(matches, "Candidate navigation moved to the wrong item or page.");
+}
+
+std::string RawInput(RimeApi *api, RimeSessionId session) {
+  const char *input = api->get_input(session);
+  Require(input != nullptr, "Raw input is unavailable.");
+  return input;
+}
+
+void VerifyCandidateNavigation(RimeApi *api, RimeSessionId session,
+                               const char *reading, const char *comma) {
+  for (bool vertical : {false, true}) {
+    for (bool linear : {false, true}) {
+      api->set_option(session, "_vertical", vertical);
+      api->set_option(session, "_linear", linear);
+      Require(api->simulate_key_sequence(session, reading),
+              "Candidate navigation reading failed.");
+      ExpectCandidatePosition(api, session, 0, 0);
+      Require(api->process_key(session, '.', 0),
+              "Period did not select the next candidate.");
+      ExpectCandidatePosition(api, session, 0, 1);
+      Require(RawInput(api, session) == reading,
+              "Next-candidate navigation modified the reading.");
+      Require(api->process_key(session, ',', 0),
+              "Comma did not select the previous candidate.");
+      ExpectCandidatePosition(api, session, 0, 0);
+      Require(api->process_key(session, '.', 0) &&
+                  api->process_key(session, '.', 0),
+              "Repeated candidate navigation failed.");
+      ExpectCandidatePosition(api, session, 0, 2);
+      Require(api->process_key(session, ',', 0),
+              "Reverse candidate navigation failed.");
+      ExpectCandidatePosition(api, session, 0, 1);
+      RIME_STRUCT(RimeCommit, commit);
+      const bool committed = api->get_commit(session, &commit);
+      if (committed)
+        api->free_commit(&commit);
+      Require(!committed, "Candidate navigation committed text unexpectedly.");
+      Require(api->process_key(session, 0xFF56, 0),
+              "Page Down stopped working.");
+      ExpectCandidatePosition(api, session, 1, 1);
+      Require(api->process_key(session, 0xFF55, 0), "Page Up stopped working.");
+      ExpectCandidatePosition(api, session, 0, 1);
+      if (std::string(reading) == "zhongguo") {
+        Require(api->process_key(session, '=', 0),
+                "Equals stopped paging Chinese candidates.");
+        ExpectCandidatePosition(api, session, 1, 1);
+        Require(api->process_key(session, '-', 0),
+                "Minus stopped paging Chinese candidates.");
+        ExpectCandidatePosition(api, session, 0, 1);
+      }
+      api->clear_composition(session);
+      Require(api->simulate_key_sequence(session, reading) &&
+                  api->process_key(session, '.', 0) &&
+                  api->process_key(session, 'a', 0),
+              "Continuing input after candidate navigation failed.");
+      Require(
+          RawInput(api, session) == std::string(reading) + "a",
+          "Candidate navigation inserted a period into the continued reading.");
+      api->clear_composition(session);
+    }
+  }
+  api->set_option(session, "_vertical", false);
+  api->set_option(session, "_linear", false);
+  Require(api->process_key(session, ',', 0),
+          "Comma without a candidate menu stopped working.");
+  ExpectCommit(api, session, comma);
+  Require(api->process_key(session, '.', 0),
+          "Period without a candidate menu stopped working.");
+  ExpectCommit(api, session, u8"。");
+  api->set_option(session, "ascii_mode", true);
+  Require(!api->process_key(session, ',', 0) &&
+              !api->process_key(session, '.', 0),
+          "English punctuation was intercepted by candidate navigation.");
+  api->set_option(session, "ascii_mode", false);
+  std::cout << "PASS comma/period individual candidates, layout variants, "
+               "paging, continuation and punctuation\n";
+}
+
 void VerifyJapaneseInput(RimeApi *api, RimeSessionId session,
                          const weasel::UIStyle &base_style) {
   Require(api->select_schema(session, "jaroomaji"),
@@ -163,6 +250,7 @@ void VerifyJapaneseInput(RimeApi *api, RimeSessionId session,
                   base_style.hilited_candidate_back_color,
           "Japanese must use Japanese font fallbacks and the same candidate "
           "style.");
+  VerifyCandidateNavigation(api, session, "kanji", u8"、");
   for (const auto &example :
        {std::pair<const char *, const char *>{"hiragana", u8"ひらがな"},
         {"gakkou", u8"がっこう"}}) {
@@ -444,6 +532,7 @@ int main(int argc, char *argv[]) {
     std::cout
         << "PASS simplified Chinese candidate, five-item page and commit\n";
 
+    VerifyCandidateNavigation(api, session, "zhongguo", u8"，");
     VerifyShiftSwitching(api, session);
     Require(api->select_schema(session, "luna_pinyin"),
             "Traditional Pinyin selection failed.");
@@ -465,6 +554,7 @@ int main(int argc, char *argv[]) {
     Require(api->select_candidate_on_current_page(session, 0),
             "Traditional candidate selection failed.");
     ExpectCommit(api, session, u8"中國");
+    VerifyCandidateNavigation(api, session, "zhongguo", u8"，");
     VerifyShiftSwitching(api, session);
     VerifyJapaneseInput(api, session, style);
     Require(

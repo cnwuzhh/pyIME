@@ -1,0 +1,4 @@
+patch:
+  paging_with_comma_period/__append:
+    - { when: has_menu, accept: comma, send: "Shift+Tab" }
+    - { when: has_menu, accept: period, send: Tab }

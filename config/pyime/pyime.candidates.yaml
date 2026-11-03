@@ -1,0 +1,10 @@
+patch:
+  key_binder/reinterpret_paging_key: false
+  selector/bindings/Shift+Tab: previous_candidate
+  selector/bindings/Tab: next_candidate
+  selector/linear/bindings/Shift+Tab: previous_candidate
+  selector/linear/bindings/Tab: next_candidate
+  selector/vertical/bindings/Shift+Tab: previous_candidate
+  selector/vertical/bindings/Tab: next_candidate
+  selector/vertical/linear/bindings/Shift+Tab: previous_candidate
+  selector/vertical/linear/bindings/Tab: next_candidate

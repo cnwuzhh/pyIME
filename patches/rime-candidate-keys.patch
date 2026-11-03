@@ -1,0 +1,17 @@
+diff --git a/src/rime/gear/key_binder.cc b/src/rime/gear/key_binder.cc
+--- a/src/rime/gear/key_binder.cc
++++ b/src/rime/gear/key_binder.cc
+@@ -307,6 +307,13 @@
+ bool KeyBinder::ReinterpretPagingKey(const KeyEvent& key_event) {
+   if (key_event.release())
+     return false;
++  bool reinterpret_paging_key = true;
++  engine_->schema()->config()->GetBool("key_binder/reinterpret_paging_key",
++                                      &reinterpret_paging_key);
++  if (!reinterpret_paging_key) {
++    last_key_ = 0;
++    return false;
++  }
+   bool ret = false;
+   int ch = (key_event.modifier() == 0) ? key_event.keycode() : 0;
+   // reinterpret period key followed by alphabetic keys
