@@ -95,5 +95,13 @@ if ($LASTEXITCODE -ne 0) {
 if ((Get-FileHash -LiteralPath $selection -Algorithm SHA256).Hash -ne $selectionHash) {
     throw 'The existing user scheme selection file was modified during deployment.'
 }
+$singleUser = Join-Path $work 'user-single-selection'
+New-Item -ItemType Directory -Path $singleUser | Out-Null
+[System.IO.File]::WriteAllText((Join-Path $singleUser 'default.custom.yaml'), "patch:`n  schema_list:`n    - schema: luna_pinyin_simp`n")
+[System.IO.File]::WriteAllText((Join-Path $singleUser 'weasel.custom.yaml'), '')
+& (Join-Path $work 'ImeProfileTest.exe') (Join-Path $package 'data') $singleUser 14 --single-selection
+if ($LASTEXITCODE -ne 0) {
+    throw "Single-scheme cycle validation failed with exit code $LASTEXITCODE."
+}
 Remove-Item -LiteralPath $work -Recurse -Force
 Write-Host "Profile tests passed. Native preview: $preview"

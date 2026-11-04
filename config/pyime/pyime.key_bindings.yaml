@@ -2,3 +2,5 @@ patch:
   paging_with_comma_period/__append:
     - { when: has_menu, accept: comma, send: "Shift+Tab" }
     - { when: has_menu, accept: period, send: Tab }
+  stellar_river_schema_cycle/__append:
+    - { when: always, accept: "Alt+grave", select: .next_in_order }

@@ -1,7 +1,48 @@
 diff --git a/src/rime/gear/key_binder.cc b/src/rime/gear/key_binder.cc
 --- a/src/rime/gear/key_binder.cc
 +++ b/src/rime/gear/key_binder.cc
-@@ -307,6 +307,13 @@
+@@ -150,6 +150,39 @@
+ static void select_schema(Engine* engine, const string& schema) {
+   if (!engine)
+     return;
+-  if (schema == ".next") {
++  if (schema == ".next_in_order") {
++    if (auto* switcher = dynamic_cast<Switcher*>(engine)) {
++      switcher->DeactivateAndApply([switcher]() {
++        select_schema(switcher->attached_engine(), ".next_in_order");
++      });
++      return;
++    }
++    the<Config> config(Config::Require("config")->Create("default"));
++    vector<string> schemas;
++    if (config) {
++      Switcher::ForEachSchemaListEntry(
++          config.get(), [&schemas](const string& id) {
++            if (std::find(schemas.begin(), schemas.end(), id) == schemas.end())
++              schemas.push_back(id);
++            return true;
++          });
++    }
++    if (schemas.empty()) {
++      LOG(WARNING) << "No configured schemas for ordered cycling.";
++      return;
++    }
++    auto next = std::find(schemas.begin(), schemas.end(),
++                          engine->schema()->schema_id());
++    if (next == schemas.end() || ++next == schemas.end())
++      next = schemas.begin();
++    if (*next == engine->schema()->schema_id())
++      return;
++    Context* ctx = engine->context();
++    if (ctx->IsComposing()) {
++      ctx->ClearNonConfirmedComposition();
++      ctx->Commit();
++    }
++    engine->ApplySchema(new Schema(*next));
++  } else if (schema == ".next") {
+     Switcher switcher(engine);
+     switcher.SelectNextSchema();
+@@ -307,6 +340,13 @@
  bool KeyBinder::ReinterpretPagingKey(const KeyEvent& key_event) {
    if (key_event.release())
      return false;

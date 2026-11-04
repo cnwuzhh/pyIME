@@ -94,6 +94,28 @@ struct Runtime {
       api->join_maintenance_thread();
     Require(api->deploy_config_file("weasel.yaml", "config_version"),
             "Weasel profile deployment failed.");
+    RimeConfig defaults{};
+    Require(api->config_open("default", &defaults),
+            "Compiled defaults are unavailable.");
+    const size_t count =
+        api->config_list_size(&defaults, "key_binder/bindings");
+    bool cycle_binding = false;
+    for (size_t i = 0; i < count; ++i) {
+      const std::string prefix =
+          "key_binder/bindings/@" + std::to_string(i) + "/";
+      char accept[128]{};
+      char select[128]{};
+      if (api->config_get_string(&defaults, (prefix + "accept").c_str(), accept,
+                                 sizeof(accept)) &&
+          api->config_get_string(&defaults, (prefix + "select").c_str(), select,
+                                 sizeof(select)) &&
+          std::string(accept) == "Alt+grave" &&
+          std::string(select) == ".next_in_order")
+        cycle_binding = true;
+    }
+    api->config_close(&defaults);
+    Require(cycle_binding,
+            "Compiled defaults do not contain the ordered cycle binding.");
   }
   ~Runtime() { api->finalize(); }
 };
@@ -160,6 +182,117 @@ std::string RawInput(RimeApi *api, RimeSessionId session) {
   const char *input = api->get_input(session);
   Require(input != nullptr, "Raw input is unavailable.");
   return input;
+}
+
+std::string CurrentSchema(RimeApi *api, RimeSessionId session) {
+  char schema[128]{};
+  Require(api->get_current_schema(session, schema, sizeof(schema)),
+          "Current scheme is unavailable.");
+  return schema;
+}
+
+std::string TapSchemeCycle(RimeApi *api, RimeSessionId session, int alt) {
+  api->process_key(session, alt, 8);
+  Require(api->process_key(session, '`', 8),
+          "Alt+grave did not invoke scheme cycling.");
+  const std::string selected = CurrentSchema(api, session);
+  api->process_key(session, '`', 0x40000008);
+  api->process_key(session, alt, 0x40000000);
+  Require(CurrentSchema(api, session) == selected,
+          "Releasing the cycle shortcut switched twice.");
+  return selected;
+}
+
+void VerifySchemaCycle(RimeApi *api, RimeSessionId session) {
+  RimeSchemaList list{};
+  Require(api->get_schema_list(&list),
+          "Configured scheme cycle is unavailable.");
+  std::vector<std::string> configured;
+  for (size_t i = 0; i < list.size; ++i)
+    configured.emplace_back(list.list[i].schema_id);
+  api->free_schema_list(&list);
+  Require(!configured.empty(), "Configured scheme cycle is empty.");
+  Require(api->select_schema(session, configured.front().c_str()),
+          "Cycle starting scheme could not be selected.");
+  if (configured.size() == 1) {
+    Require(api->simulate_key_sequence(session, "nihao"),
+            "Single-scheme pending input failed.");
+    Require(TapSchemeCycle(api, session, 0xFFE9) == configured.front() &&
+                RawInput(api, session) == "nihao",
+            "A single-scheme cycle changed the scheme or discarded input.");
+    Require(api->process_key(session, 0xFFC1, 0),
+            "F4 did not open the single-scheme menu.");
+    Require(TapSchemeCycle(api, session, 0xFFEA) == configured.front() &&
+                RawInput(api, session) == "nihao",
+            "Closing the single-scheme menu discarded pending input.");
+    RIME_STRUCT(RimeCommit, commit);
+    const bool committed = api->get_commit(session, &commit);
+    if (committed)
+      api->free_commit(&commit);
+    Require(!committed, "A single-scheme cycle committed input unexpectedly.");
+    api->clear_composition(session);
+    VerifyShiftSwitching(api, session);
+    std::cout
+        << "PASS single configured scheme keeps pending input on Alt+grave\n";
+    return;
+  }
+  for (int alt : {0xFFE9, 0xFFEA}) {
+    for (size_t i = 0; i < configured.size(); ++i) {
+      Require(TapSchemeCycle(api, session, alt) ==
+                  configured[(i + 1) % configured.size()],
+              "Scheme cycling did not follow the configured list order.");
+      Require(!api->get_option(session, "ascii_mode"),
+              "Scheme cycling did not enter the target scheme's text mode.");
+    }
+  }
+  Require(api->simulate_key_sequence(session, "nihao") &&
+              api->process_key(session, 0xFFC1, 0),
+          "Pending-input scheme menu could not be opened.");
+  Require(TapSchemeCycle(api, session, 0xFFE9) == configured[1],
+          "Cycling from the F4 menu did not use the active scheme's order.");
+  ExpectCommit(api, session, "nihao");
+  Require(RawInput(api, session).empty(),
+          "Cycling did not close the scheme menu and previous composition.");
+  Require(api->select_schema(session, configured.front().c_str()),
+          "Scheme reset after menu cycling failed.");
+  const std::string before = CurrentSchema(api, session);
+  api->process_key(session, 0xFFE9, 8);
+  api->process_key(session, 0xFFE1, 9);
+  api->process_key(session, 0xFFE1, 0x40000008);
+  api->process_key(session, 0xFFE9, 0x40000000);
+  api->process_key(session, '`', 12);
+  api->process_key(session, '`', 0x4000000C);
+  Require(CurrentSchema(api, session) == before &&
+              !api->get_option(session, "ascii_mode"),
+          "Alt+Shift or Ctrl+Alt+grave incorrectly triggered the cycle.");
+  api->set_option(session, "ascii_mode", true);
+  Require(TapSchemeCycle(api, session, 0xFFE9) == configured[1] &&
+              !api->get_option(session, "ascii_mode"),
+          "Alt+grave did not work from English mode.");
+  Require(api->select_schema(session, configured.front().c_str()) &&
+              api->simulate_key_sequence(session, "nihao"),
+          "Cycle pending-input setup failed.");
+  Require(TapSchemeCycle(api, session, 0xFFE9) == configured[1],
+          "Cycling with pending input selected the wrong scheme.");
+  ExpectCommit(api, session, "nihao");
+  Require(RawInput(api, session).empty(),
+          "The new scheme retained the previous composition.");
+  for (size_t i = 0; i < configured.size(); ++i) {
+    if (configured[i] != "jaroomaji")
+      continue;
+    Require(api->select_schema(session, "jaroomaji") &&
+                api->simulate_key_sequence(session, "nihongo"),
+            "Japanese pending-cycle input failed.");
+    Require(TapSchemeCycle(api, session, 0xFFEA) ==
+                configured[(i + 1) % configured.size()],
+            "Japanese pending input cycled to the wrong scheme.");
+    ExpectCommit(api, session, "nihongo");
+  }
+  Require(api->select_schema(session, configured.front().c_str()),
+          "Cycle final scheme reset failed.");
+  VerifyShiftSwitching(api, session);
+  std::cout << "PASS Alt+grave configured-order cycles, releases, English "
+               "mode, pending input and modifier isolation\n";
 }
 
 void VerifyCandidateNavigation(RimeApi *api, RimeSessionId session,
@@ -443,8 +576,9 @@ void SavePreview(weasel::UIStyle style, const weasel::Context &context,
 
 int main(int argc, char *argv[]) {
   try {
-    Require(argc == 4 || argc == 5, "Expected shared-data user-data font-point "
-                                    "[preview-png|--existing-selection].");
+    Require(argc == 4 || argc == 5,
+            "Expected shared-data user-data font-point "
+            "[preview-png|--existing-selection|--single-selection].");
     Require(SetProcessDpiAwarenessContext(
                 DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2),
             "DPI-aware native preview setup failed.");
@@ -453,6 +587,13 @@ int main(int argc, char *argv[]) {
     const RimeSessionId session = api->create_session();
     Require(session != 0, "Session creation failed.");
     char schema[128]{};
+    if (argc == 5 && std::string(argv[4]) == "--single-selection") {
+      Require(CurrentSchema(api, session) == "luna_pinyin_simp",
+              "The user's single scheme was not selected.");
+      VerifySchemaCycle(api, session);
+      api->destroy_session(session);
+      return 0;
+    }
     if (argc == 5 && std::string(argv[4]) == "--existing-selection") {
       Require(
           api->get_current_schema(session, schema, sizeof(schema)) &&
@@ -466,9 +607,10 @@ int main(int argc, char *argv[]) {
           std::string(selected.list[0].schema_id) == "luna_pinyin" &&
           std::string(selected.list[1].schema_id) == "luna_pinyin_simp";
       api->free_schema_list(&selected);
-      api->destroy_session(session);
       Require(preserved,
               "Existing user's scheme selection order was overridden.");
+      VerifySchemaCycle(api, session);
+      api->destroy_session(session);
       std::cout << "PASS existing user's selected scheme order and default "
                    "preserved\n";
       return 0;
@@ -564,6 +706,7 @@ int main(int argc, char *argv[]) {
         "Returning to simplified Pinyin did not restore simplified output.");
     std::cout << "PASS traditional Chinese commit and simplified/traditional "
                  "mode isolation\n";
+    VerifySchemaCycle(api, session);
     api->destroy_session(session);
     std::cout << "PASS Shift English switching in all three schemes, "
                  "pending-code commit and non-toggle gestures\n";
