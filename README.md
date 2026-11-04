@@ -45,7 +45,18 @@ Alt+反引号是星河内部快捷键，仅在星河启用并收到输入事件�
 
 ## 产品名称和兼容性
 
-品牌定义位于 [`config/branding.json`](./config/branding.json)。中文名为“星河输入法”，英文品牌为 **Stellar River**，完整产品名为 **Stellar River IME**，无空格的代码标识使用 `StellarRiver`；GitHub 仓库仍为 `pyIME`。安装器、卸载列表、开始菜单、系统输入法显示名、托盘提示、设置窗口和文件属性使用对应的中英文产品名。安装包名为 `星河输入法-0.17.4.0-setup.exe`。
+品牌定义位于 [`config/branding.json`](./config/branding.json)。中文名为“星河输入法”，英文品牌为 **Stellar River**，完整产品名为 **Stellar River IME**，无空格的代码标识使用 `StellarRiver`；GitHub 仓库仍为 `pyIME`。安装器、卸载列表、开始菜单、系统输入法显示名、托盘提示、设置窗口和文件属性使用对应的中英文产品名。安装包名包含基础版本和日期构建号，例如 `星河输入法-0.17.4+20261104.083533-setup.exe`。
+
+## 构建号、版本和源码 tag
+
+- 每次构建取本机启动构建时的日期与时间，生成 `YYYYMMDD.HHmmss`，同一天多次构建不会共用文件名。
+- 产品版本采用 `基础版本+构建号`，例如 `0.17.4+20261104.083533`。安装器标题、卸载列表和应用版本字符串显示完整构建号。
+- Windows 固定数值版本只能有四段、每段不超过 65535，不能把八位日期直接放入最后一段。其最后一段使用自 2000-01-01 起的天数；完整日期仍保留在产品版本和文件名中。
+- 构建成功后生成安装包对应的 `.exe.build.json`，记录版本、日期、源码提交、SHA-256、tag 和推送状态；`output/latest-build.json` 指向最新成功构建。
+- 从干净、构建期间未变化的源码提交构建时，自动创建并推送 `build-YYYYMMDD-HHmmss` 注释 tag，并核对远端指向。不会覆盖已有 tag；推送失败会明确报错，不代表发布成功。
+- 有未提交修改时仅生成开发验证包，并明确警告未打 tag。正式交付前应提交源码，再重新构建，不能将脏工作区的包冒充为某个提交的产物。
+
+tag 标识实际构建源码，不等于已经创建 GitHub Release 或上传二进制附件。构建之后只补充的进展日志可以另行提交；构建 tag 仍指向当时的源码提交。
 
 为了兼容此前安装及用户词库，暂时保留上游 TSF GUID、注册表路径、进程文件名以及 `%APPDATA%\Rime` 用户目录。因此这是原有 Weasel 安装的品牌定制升级，不是可与小狼毫并行注册的独立输入法；内部文件出现 `WeaselServer.exe`、`weasel.dll` 属于兼容实现，不是显示品牌。覆盖安装后如 Windows 缓存旧显示名，按安装器提示重启或注销再登录。
 
@@ -98,7 +109,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1
 
 Boost 使用 [`scripts/boost-config.jam`](./scripts/boost-config.jam) 中的官方配置：由构建入口明确传入已验证的 `vcvarsall.bat` 路径，并设置 `rewrite-setup-scripts=off`。这避免 Boost 1.84 的自动路径识别和环境缓存失败导致架构错误或编译目标被跳过。
 
-原始构建日志输出到 `.build\build-*.log`，安装包统一放在仓库根目录的 [`output/`](./output/) 中。上游构建在 `vendor\weasel\output\archives` 中生成星河安装包，构建入口随后复制到根目录 `output`，核对 SHA-256，并显示最终路径。同名文件会被最新成功构建覆盖。工具缓存和安装包二进制不提交到 Git，`output` 中的说明文件保留在版本控制中。安装包已加入星河品牌和上述默认输入配置，尚未集成雾凇拼音；输入法安装与配置部署另行执行。安装后，可通过开始菜单中的星河输入法工具打开用户文件夹。更多上游细节见 [Weasel 构建说明](https://github.com/rime/weasel/blob/master/INSTALL.md)。
+原始构建日志输出到 `.build\build-*.log`，安装包统一放在仓库根目录的 [`output/`](./output/) 中。上游构建在 `vendor\weasel\output\archives` 中生成带日期版本的星河安装包，构建入口随后复制到根目录 `output`，核对 SHA-256，并显示最终路径；不同构建保留各自的安装包和元数据，不再覆盖固定版本文件名。工具缓存和安装包二进制不提交到 Git，`output` 中的说明文件保留在版本控制中。安装包已加入星河品牌和上述默认输入配置，尚未集成雾凇拼音；输入法安装与配置部署另行执行。安装后，可通过开始菜单中的星河输入法工具打开用户文件夹。更多上游细节见 [Weasel 构建说明](https://github.com/rime/weasel/blob/master/INSTALL.md)。
 
 上游脚本会临时改写 OpenCC 的 CMake 文件并删除 librime 的占位文件；构建入口在运行前保存其原始字节，结束时恢复，避免源码变脏。Weasel 子模块设置 `ignore = untracked`，只忽略未跟踪的构建输出，已跟踪源码改动和子模块版本变化仍会显示。
 
@@ -109,8 +120,11 @@ Boost 使用 [`scripts/boost-config.jam`](./scripts/boost-config.jam) 中的官�
 完成构建后运行：
 
 ```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-build-info.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-profile.ps1
 ```
+
+默认从 `output/latest-build.json` 选择安装包；也可向 `test-profile.ps1` 传入 `-Installer` 测试指定日期版本，需保留旁边的 `.exe.build.json`。版本检查核对实际 PE/NSIS 的字符串版本和合法数值版本，不只检查文件名。
 
 测试从根目录 `output` 的星河安装包解压实际配置和 Rime DLL，检查安装器品牌、所有程序各语言版本信息、对话框及字符串资源和上游许可证；通过安装向导使用的选中方案 API 验证默认勾选简体、繁体、日语及其顺序。验证中文繁简输出、日语平假名/片假名/汉字/标点、三个方案内的 Shift 英文切换，以及日语词库及许可的打包完整性。另用空用户补丁、已有字体补丁和已有用户的逆序方案列表分别验证部署行为，确认保留个人选择且不改写自定义文件；不读写真实用户词库或系统输入设置。
 

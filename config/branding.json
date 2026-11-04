@@ -1,7 +1,7 @@
 {
   "name": "星河输入法",
   "englishName": "Stellar River IME",
-  "installerFile": "星河输入法-0.17.4.0-setup.exe",
+  "baseVersion": "0.17.4",
   "installDirectory": "stellariver",
   "publisher": "pyIME Contributors",
   "projectUrl": "https://github.com/cnwuzhh/pyIME"

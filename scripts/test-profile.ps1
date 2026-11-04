@@ -5,8 +5,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if (-not $Installer) {
-    $brand = Get-Content -LiteralPath (Join-Path $root 'config\branding.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-    $Installer = Join-Path $root ('output\' + $brand.installerFile)
+    $build = Get-Content -LiteralPath (Join-Path $root 'output\latest-build.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+    $Installer = Join-Path $root ('output\' + $build.installerFile)
 }
 $weasel = Join-Path $root 'vendor\weasel'
 $work = Join-Path $root ('.build\profile-test-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))

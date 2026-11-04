@@ -7,7 +7,6 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $weasel = Join-Path $root 'vendor\weasel'
-$brand = Get-Content -LiteralPath (Join-Path $root 'config\branding.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $runtimePatch = Join-Path $root 'patches\rime-candidate-keys.patch'
 $runtimePatchHash = (Get-FileHash -LiteralPath $runtimePatch -Algorithm SHA256).Hash
 $runtimeCache = Join-Path $root '.build\rime-runtime-cache.json'
@@ -46,6 +45,15 @@ if (-not (Test-Path -LiteralPath $vcvars)) {
 $env:BOOST_ROOT = (Resolve-Path -LiteralPath $BoostRoot).Path
 $env:SDKVER = '10.0.19041.0'
 $env:RELEASE_BUILD = '1'
+$build = & (Join-Path $PSScriptRoot 'new-build-info.ps1') -Root $root
+$parts = $build.baseVersion.Split('.')
+$env:VERSION_MAJOR = $parts[0]
+$env:VERSION_MINOR = $parts[1]
+$env:VERSION_PATCH = $parts[2]
+$env:WEASEL_VERSION = $build.baseVersion
+$env:WEASEL_BUILD = "$($build.windowsBuildNumber)"
+$env:PRODUCT_VERSION = $build.productVersion
+$env:FILE_VERSION = $build.windowsVersion
 $env:DEVTOOLS_PATH = "$gitBin;$CMakeBin;$pythonBin;"
 $env:PATH = "$gitBin;$CMakeBin;$pythonBin;$env:PATH"
 $env:PYIME_VCVARSALL = $vcvars -replace '\\', '/'
@@ -79,6 +87,9 @@ if ($SkipDependencies) {
 
 $logs = Join-Path $root '.build'
 New-Item -ItemType Directory -Path $logs -Force | Out-Null
+$encoding = New-Object System.Text.UTF8Encoding($false)
+$env:STELLAR_BUILD_INFO = Join-Path $logs ("build-info-{0}.json" -f $build.buildNumber)
+[System.IO.File]::WriteAllText($env:STELLAR_BUILD_INFO, ($build | ConvertTo-Json), $encoding)
 $log = Join-Path $logs ("build-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 $sourceFiles = @(
     (Join-Path $weasel 'librime\lib\.placeholder'),
@@ -96,6 +107,8 @@ $originals = foreach ($path in $sourceFiles) {
     }
 }
 Write-Host "Build log: $log"
+Write-Host "Product version: $($build.productVersion)"
+Write-Host "Source commit: $($build.sourceCommit); uncommitted changes: $($build.sourceDirty)"
 $commands = @('call "{0}" x86_amd64 {1}' -f $vcvars, $env:SDKVER)
 foreach ($phase in $phases) {
     $commands += 'cd /d "{0}" && call build.bat {1}' -f $weasel, $phase
@@ -128,7 +141,7 @@ try {
         throw 'The build did not produce both new patched Rime runtimes.'
     }
     & (Join-Path $PSScriptRoot 'test-installer-defaults.ps1') -Script (Join-Path $weasel 'output\install.nsi')
-    $installer = Get-Item -LiteralPath (Join-Path $weasel ('output\archives\' + $brand.installerFile))
+    $installer = Get-Item -LiteralPath (Join-Path $weasel ('output\archives\' + $build.installerFile))
     if ($installer.Length -eq 0 -or $installer.LastWriteTime -lt $started) {
         throw 'The build did not generate a new, non-empty installer.'
     }
@@ -140,6 +153,14 @@ try {
     $outputHash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
     if ($sourceHash -ne $outputHash) {
         throw "Installer copy verification failed: $destination"
+    }
+    $build.installerSha256 = $outputHash
+    $build.installerBytes = (Get-Item -LiteralPath $destination).Length
+    $manifest = $destination + '.build.json'
+    $latest = Join-Path $output 'latest-build.json'
+    $json = $build | ConvertTo-Json
+    foreach ($path in @($env:STELLAR_BUILD_INFO, $manifest, $latest)) {
+        [System.IO.File]::WriteAllText($path, $json, $encoding)
     }
     $cache = @{
         patchHash = $runtimePatchHash
@@ -155,4 +176,36 @@ try {
         New-Item -ItemType Directory -Path $directory -Force | Out-Null
         [System.IO.File]::WriteAllBytes($original.Path, $original.Bytes)
     }
+}
+if ($build.sourceDirty) {
+    Write-Warning 'Development installer created without a source tag: commit changes, then rebuild from a clean commit for delivery.'
+} else {
+    $head = git -C $root rev-parse HEAD
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot verify the build source commit.' }
+    $state = git -C $root status --porcelain --untracked-files=normal
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot verify build source cleanliness.' }
+    if ("$head".Trim() -ne $build.sourceCommit -or $state) {
+        throw 'Source changed during the build; the installer must not receive a source tag.'
+    }
+    git -C $root check-ref-format ("refs/tags/" + $build.tag)
+    if ($LASTEXITCODE -ne 0) { throw 'The generated build tag is invalid.' }
+    git -C $root tag -a $build.tag $build.sourceCommit `
+        -m ("Stellar River IME {0}`nInstaller SHA-256: {1}" -f $build.productVersion, $build.installerSha256)
+    if ($LASTEXITCODE -ne 0) { throw 'Build tag creation failed; existing tags are never overwritten.' }
+    git -C $root push origin ("refs/tags/" + $build.tag)
+    if ($LASTEXITCODE -ne 0) { throw 'Build tag push failed.' }
+    $tagRef = "refs/tags/$($build.tag)"
+    $remote = git -C $root ls-remote origin $tagRef ($tagRef + '^{}')
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot read the remote build tag.' }
+    $peeled = @($remote | Where-Object { ($_ -split '\s+', 2)[1] -eq ($tagRef + '^{}') })
+    if ($peeled.Count -ne 1 -or
+        ($peeled[0] -split '\s+')[0] -ne $build.sourceCommit) {
+        throw 'The remote build tag does not resolve to the built source commit.'
+    }
+    $build.tagged = $true
+    $json = $build | ConvertTo-Json
+    foreach ($path in @($env:STELLAR_BUILD_INFO, $manifest, $latest)) {
+        [System.IO.File]::WriteAllText($path, $json, $encoding)
+    }
+    Write-Host "BUILD_TAG_PUSHED=$($build.tag) -> $($build.sourceCommit)"
 }
