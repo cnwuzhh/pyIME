@@ -24,4 +24,8 @@ Alt+反引号按配置顺序循环三种方案，普通左右 Alt 都支持，Al
 
 运行 [`scripts/test-profile.ps1`](../scripts/test-profile.ps1) 可验证安装包中的配置及输入行为，并生成 `candidate-preview.png`；预览来自实际的原生 Weasel 候选窗，不是模拟图片。
 
-安装包二进制仅保存在本地，不提交到 Git；本说明文件用于保留目录及其用途。
+安装包不提交到 Git；正式构建会通过本地 GitHub CLI 自动上传原始安装器、`.exe.build.json` 和包含递归固定子模块的 `-source.zip`，核验附件后发布正式 Release。首次需要浏览器授权，未登录会报错；`-SkipRelease` 可跳过发布。
+
+输入测试成功生成 `.exe.validation.json`，发布脚本要求其匹配同一包的 SHA-256、源码和 tag。源码 ZIP 的 `.source.json` 保存本地缓存校验信息；不要修改已上传附件的对应本地文件。发布结果另外写入 `.exe.release.json` 和 `latest-release.json`，不回写已上传的构建 JSON。可用 [`scripts/publish-release.ps1`](../scripts/publish-release.ps1) 重试，相同附件复用，冲突文件不覆盖。
+
+本说明文件用于保留目录及其用途。

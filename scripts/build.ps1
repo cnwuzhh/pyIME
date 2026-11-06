@@ -1,7 +1,8 @@
 param(
     [string]$BoostRoot = (Join-Path $PSScriptRoot '..\.tools\boost_1_84_0'),
     [string]$CMakeBin = (Join-Path $PSScriptRoot '..\.tools\cmake-3.31.8-windows-x86_64\bin'),
-    [switch]$SkipDependencies
+    [switch]$SkipDependencies,
+    [switch]$SkipRelease
 )
 
 $ErrorActionPreference = 'Stop'
@@ -46,6 +47,9 @@ $env:BOOST_ROOT = (Resolve-Path -LiteralPath $BoostRoot).Path
 $env:SDKVER = '10.0.19041.0'
 $env:RELEASE_BUILD = '1'
 $build = & (Join-Path $PSScriptRoot 'new-build-info.ps1') -Root $root
+if (-not $build.sourceDirty -and -not $SkipRelease) {
+    $null = & (Join-Path $PSScriptRoot 'resolve-gh.ps1') -CheckAuth
+}
 $parts = $build.baseVersion.Split('.')
 $env:VERSION_MAJOR = $parts[0]
 $env:VERSION_MINOR = $parts[1]
@@ -208,4 +212,10 @@ if ($build.sourceDirty) {
         [System.IO.File]::WriteAllText($path, $json, $encoding)
     }
     Write-Host "BUILD_TAG_PUSHED=$($build.tag) -> $($build.sourceCommit)"
+    if ($SkipRelease) {
+        Write-Host 'RELEASE_SKIPPED=explicit -SkipRelease'
+    } else {
+        & (Join-Path $PSScriptRoot 'test-profile.ps1') -Installer $destination
+        & (Join-Path $PSScriptRoot 'publish-release.ps1') -BuildManifest $manifest
+    }
 }

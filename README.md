@@ -58,6 +58,32 @@ Alt+反引号是星河内部快捷键，仅在星河启用并收到输入事件�
 
 tag 标识实际构建源码，不等于已经创建 GitHub Release 或上传二进制附件。构建之后只补充的进展日志可以另行提交；构建 tag 仍指向当时的源码提交。
 
+### 自动上传正式 Release
+
+采用**本地上传已验证安装包**，不在 GitHub Actions 重编译。干净源码构建默认执行：构建 → 推送源码 tag → 安装包品牌、配置和真实输入测试 → 上传并核验附件 → 发布正式 Release。开发脏工作区不发布；需要离线构建或暂不上传时使用 `.\scripts\build.ps1 -SkipRelease`，仍保留原有干净构建打 tag 的行为。干净构建会先检查 GitHub 登录，避免编译完成后才发现未授权。
+
+首次需要 GitHub CLI（可安装全局 `gh`；本项目本地工具路径为 `.tools\gh\bin\gh.exe`），并完成一次浏览器授权：
+
+```powershell
+& .\.tools\gh\bin\gh.exe auth login --hostname github.com --web --git-protocol ssh --skip-ssh-key
+```
+
+不要将 Token 写进配置、脚本、日志或聊天。Git 的 SSH 推送权限与 GitHub API 登录是两回事；发布还需要当前账号对 `config/branding.json` 中项目仓库有写入权限。
+
+发布包含三份附件：原始安装器、原始 `.exe.build.json`、包含递归固定子模块的 `-source.zip`。源码 ZIP 来自 tag 的真实提交，不是当前工作目录；包含上游许可与 `SOURCE-INFO`，排除 Git 历史/凭据、构建缓存和私人用户词库。ZIP 无 Git 元数据，常规构建和打 tag 时按其中说明重新克隆对应 tag。
+
+已有安装包无需重编译，可以先生成验证回执，再上传：
+
+```powershell
+.\scripts\test-profile.ps1
+.\scripts\test-release.ps1
+.\scripts\publish-release.ps1
+```
+
+默认读取 `output/latest-build.json`；发布脚本也接受 `-BuildManifest` 指定旧安装包的 `.exe.build.json`。验证回执 `.exe.validation.json` 必须匹配同一安装包 SHA-256、源码、版本和 tag。发布先在草稿中上传，核验远端附件字节数及 SHA-256（服务端摘要不可用时下载校验），全部通过后才设为正式版和最新 Release。
+
+中断后可重新运行发布脚本：相同附件核验后复用，不覆盖不同哈希的文件；不完整/冲突附件会明确报错，须检查后处理。已发布的完整正式版只复核，不改正文或最新版本排序；已公开但缺附件的版本不自动修补。构建 JSON 保持不变，发布 URL 与核验结果另外记录在 `.exe.release.json` 和 `output/latest-release.json`。
+
 为了兼容此前安装及用户词库，暂时保留上游 TSF GUID、注册表路径、进程文件名以及 `%APPDATA%\Rime` 用户目录。因此这是原有 Weasel 安装的品牌定制升级，不是可与小狼毫并行注册的独立输入法；内部文件出现 `WeaselServer.exe`、`weasel.dll` 属于兼容实现，不是显示品牌。覆盖安装后如 Windows 缓存旧显示名，按安装器提示重启或注销再登录。
 
 新安装默认父目录为 `Program Files\stellariver`（按用户指定的拼写），32 位安装使用对应的 Program Files 目录。内部版本子目录继续保留，例如 64 位机器上的程序目录为 `C:\Program Files\stellariver\weasel-0.17.4`。升级会复用注册表中记录的原安装父目录，不自动搬移既有安装；用户词库目录不变。

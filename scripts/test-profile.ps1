@@ -9,6 +9,10 @@ if (-not $Installer) {
     $Installer = Join-Path $root ('output\' + $build.installerFile)
 }
 $weasel = Join-Path $root 'vendor\weasel'
+$receipt = $Installer + '.validation.json'
+if (Test-Path -LiteralPath $receipt) {
+    Remove-Item -LiteralPath $receipt
+}
 $work = Join-Path $root ('.build\profile-test-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 New-Item -ItemType Directory -Path $work | Out-Null
 $package = Join-Path $work 'package'
@@ -104,4 +108,17 @@ if ($LASTEXITCODE -ne 0) {
     throw "Single-scheme cycle validation failed with exit code $LASTEXITCODE."
 }
 Remove-Item -LiteralPath $work -Recurse -Force
+$info = Get-Content -LiteralPath ($Installer + '.build.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$validation = [pscustomobject]@{
+    passed = $true
+    tag = $info.tag
+    productVersion = $info.productVersion
+    sourceCommit = $info.sourceCommit
+    installerSha256 = (Get-FileHash -LiteralPath $Installer -Algorithm SHA256).Hash
+    verifiedAt = (Get-Date).ToString('o')
+} | ConvertTo-Json
+if ((Get-FileHash -LiteralPath $Installer -Algorithm SHA256).Hash -ne $info.installerSha256) {
+    throw 'The installer changed during validation; no receipt will be created.'
+}
+[IO.File]::WriteAllText($receipt, $validation, (New-Object Text.UTF8Encoding($false)))
 Write-Host "Profile tests passed. Native preview: $preview"
